@@ -1,0 +1,50 @@
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+/* Shared auth/hero grid. A separate layer preserves the host's surface and glow. */
+.ui-grid {
+    position: relative;
+    isolation: isolate;
+}
+
+.ui-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--color-primary) 8%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 8%, transparent) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 5%, transparent 78%);
+}
+
+.d-select {
+    display: block;
+    box-sizing: border-box;
+    min-height: 2.5rem;
+    height: 2.5rem;
+    line-height: 1.25rem;
+    padding-top: calc((2.5rem - 1.25rem - (var(--border) * 2)) / 2);
+    padding-bottom: calc((2.5rem - 1.25rem - (var(--border) * 2)) / 2);
+    vertical-align: middle;
+}
+
+.d-select.d-select-sm {
+    min-height: 2rem;
+    height: 2rem;
+    padding-top: calc((2rem - 1.25rem - (var(--border) * 2)) / 2);
+    padding-bottom: calc((2rem - 1.25rem - (var(--border) * 2)) / 2);
+}

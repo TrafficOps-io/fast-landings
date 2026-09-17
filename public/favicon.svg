@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <style>
+    :root { color: #241f1d; --ui-brand-accent: #f04426; --ui-brand-highlight: #ff7857; }
+    .background { fill: #fbf7f2; }
+    @media (prefers-color-scheme: dark) {
+      :root { color: #f7f0eb; --ui-brand-accent: #ff7857; --ui-brand-highlight: #ff9677; }
+      .background { fill: #262220; }
+    }
+  </style>
+  <rect class="background" width="64" height="64" rx="14"/>
+  <g transform="translate(2 8) scale(.75)">
+    <rect x="18" y="4" width="56" height="46" rx="8" fill="var(--ui-brand-highlight, #ff7857)" fill-opacity=".42"/>
+    <rect x="5" y="11" width="58" height="48" rx="8" stroke="currentColor" stroke-width="5"/>
+    <path d="M7.5 24h53" stroke="currentColor" stroke-width="5"/>
+    <circle cx="15" cy="17.5" r="2.5" fill="var(--ui-brand-accent, #f04426)"/>
+    <path d="M18 41h56m-10-10 10 10-10 10" stroke="var(--ui-brand-accent, #f04426)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M48 41h26m-10-10 10 10-10 10" stroke="var(--ui-brand-highlight, #ff7857)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity=".62"/>
+  </g>
+</svg>

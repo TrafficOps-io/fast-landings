@@ -1,0 +1,307 @@
+name: ${COMPOSE_PROJECT_NAME:-fast-landings}
+
+x-logging: &bounded-logging
+  driver: local
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-app: &app-service
+  image: ${APP_IMAGE:-fast-landings-app:local}
+  env_file:
+    - ${FAST_LANDINGS_APP_ENV:?Run install.sh to generate FAST_LANDINGS_APP_ENV}
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,noexec,size=256m
+  volumes:
+    - type: bind
+      source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/laravel-storage
+      target: /var/www/html/storage
+    - type: bind
+      source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/landings/private
+      target: /var/lib/fast-landings/landings
+  networks:
+    - backend
+  depends_on:
+    postgres:
+      condition: service_healthy
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 256
+  mem_limit: 512m
+  logging: *bounded-logging
+  stop_grace_period: 30s
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17.6-alpine3.22}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fast_landings
+      POSTGRES_USER: fast_landings
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets:
+      - postgres_password
+    volumes:
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/postgres
+        target: /var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    shm_size: 256m
+    logging: *bounded-logging
+    stop_grace_period: 60s
+
+  app:
+    <<: *app-service
+    networks:
+      - backend
+      - egress
+    build:
+      context: ${FAST_LANDINGS_SOURCE_DIR:?Run install.sh to set FAST_LANDINGS_SOURCE_DIR}
+      dockerfile: deploy/Dockerfile
+      target: app
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        NODE_VERSION: ${NODE_VERSION:-22}
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/fast-landings-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    mem_limit: 768m
+
+  queue:
+    <<: *app-service
+    mem_limit: 1g
+    shm_size: 256m
+    networks:
+      - backend
+      - egress
+    command:
+      - php
+      - artisan
+      - queue:work
+      - --sleep=3
+      - --tries=3
+      - --timeout=120
+      - --max-time=3600
+      - --no-interaction
+    stop_grace_period: 1860s
+
+  scheduler:
+    <<: *app-service
+    networks:
+      - backend
+      - egress
+    command: ["php", "artisan", "schedule:work", "--no-interaction"]
+    mem_limit: 256m
+
+  projection:
+    <<: *app-service
+    user: "10002:10001"
+    entrypoint: []
+    command: ["/usr/local/bin/projection-runner"]
+    environment:
+      LANDINGS_PATH: /var/lib/fast-landings/all/private
+      FAST_LANDINGS_PUBLIC_PATH: /var/lib/fast-landings/all/public
+    volumes:
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/landings
+        target: /var/lib/fast-landings/all
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/projection-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    mem_limit: 256m
+
+  web:
+    image: ${WEB_IMAGE:-fast-landings-web:local}
+    build:
+      context: ${FAST_LANDINGS_SOURCE_DIR:?Run install.sh to set FAST_LANDINGS_SOURCE_DIR}
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+        NODE_VERSION: ${NODE_VERSION:-22}
+        NGINX_VERSION: ${NGINX_VERSION:-1.29-alpine}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=256m
+    networks:
+      - edge
+      - backend
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "--header=Host: ${PANEL_HOST:?Run install.sh to set PANEL_HOST}", "http://127.0.0.1:8080/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 384m
+    logging: *bounded-logging
+
+  landing-php:
+    image: ${LANDING_PHP_IMAGE:-fast-landings-landing-php:local}
+    build:
+      context: ${FAST_LANDINGS_SOURCE_DIR:?Run install.sh to set FAST_LANDINGS_SOURCE_DIR}
+      dockerfile: deploy/Dockerfile
+      target: landing-php
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.4}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=256m,uid=10004,gid=10001,mode=0700
+    volumes:
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/landings/public/releases
+        target: /srv/landings/releases
+        read_only: true
+    # This service intentionally has no app env_file, private storage, backend
+    # network or published port. Egress supports ordinary HTTPS API calls.
+    networks:
+      - landing-runtime
+      - landing-egress
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/landing-php-healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 640m
+    logging: *bounded-logging
+
+  edge:
+    image: ${CADDY_IMAGE:-caddy:2.10.2-alpine}
+    init: true
+    restart: unless-stopped
+    user: "10003:10001"
+    env_file:
+      - ${FAST_LANDINGS_EDGE_ENV:?Run install.sh to generate FAST_LANDINGS_EDGE_ENV}
+    ports:
+      - target: 8080
+        published: "80"
+        protocol: tcp
+        mode: host
+      - target: 8443
+        published: "443"
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: ${FAST_LANDINGS_CADDYFILE:?Run install.sh to set FAST_LANDINGS_CADDYFILE}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/caddy-data
+        target: /data
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/caddy-config
+        target: /config
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/landings/public/hosts
+        target: /srv/landings/hosts
+        read_only: true
+      - type: bind
+        source: ${FAST_LANDINGS_DATA_DIR:?Run install.sh to set FAST_LANDINGS_DATA_DIR}/landings/public/releases
+        target: /srv/landings/releases
+        read_only: true
+    networks:
+      - edge
+      - landing-runtime
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 256m
+    logging: *bounded-logging
+
+    # The official Caddy binary carries cap_net_bind_service; its file
+    # capability must be in the bounding set even on our high listen ports.
+    cap_add:
+      - NET_BIND_SERVICE
+
+  migrate:
+    <<: *app-service
+    profiles: [tools]
+    restart: "no"
+    command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+
+  install:
+    <<: *app-service
+    profiles: [tools]
+    restart: "no"
+    env_file:
+      - ${FAST_LANDINGS_APP_ENV:?Run install.sh to generate FAST_LANDINGS_APP_ENV}
+      - ${FAST_LANDINGS_ADMIN_ENV:?Run install.sh to generate FAST_LANDINGS_ADMIN_ENV}
+    command:
+      - php
+      - artisan
+      - fast-landings:install
+      - --system-domain=${SYSTEM_HOST_SUFFIX:?Run install.sh to set SYSTEM_HOST_SUFFIX}
+      - --origin=${ORIGIN_HOST:?Run install.sh to set ORIGIN_HOST}
+      - --admin-name=${ADMIN_NAME:-Administrator}
+      - --admin-email=${ADMIN_EMAIL:?Run install.sh to set ADMIN_EMAIL}
+      - --force
+
+networks:
+  edge:
+    name: ${COMPOSE_PROJECT_NAME:-fast-landings}_edge
+  backend:
+    name: ${COMPOSE_PROJECT_NAME:-fast-landings}_backend
+    internal: true
+  egress:
+    name: ${COMPOSE_PROJECT_NAME:-fast-landings}_egress
+  landing-runtime:
+    name: ${COMPOSE_PROJECT_NAME:-fast-landings}_landing-runtime
+    internal: true
+  landing-egress:
+    name: ${COMPOSE_PROJECT_NAME:-fast-landings}_landing-egress
+
+secrets:
+  postgres_password:
+    file: ${FAST_LANDINGS_POSTGRES_PASSWORD_FILE:?Run install.sh to generate the PostgreSQL password file}

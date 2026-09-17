@@ -1,0 +1,29 @@
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: #fff; color: var(--text); font: var(--font-size)/1.7 system-ui, sans-serif; }
+a { color: var(--primary); }
+.shell { width: min(900px, calc(100% - 40px)); margin: auto; }
+.site-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 24px; border-bottom: 1px solid var(--secondary); }
+.brand { display: flex; gap: 12px; align-items: center; text-decoration: none; font-size: 1.2rem; font-weight: 750; color: var(--text); }
+.logo { width: 40px; height: 40px; object-fit: contain; }
+.eyebrow { color: var(--primary); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 700; }
+.article { padding-block: 52px 40px; }
+h1 { font-size: clamp(2rem, 6vw, 3.6rem); line-height: 1.1; letter-spacing: -.04em; margin: 16px 0 24px; }
+.lead { color: var(--primary); font-size: 1.3em; line-height: 1.5; }
+.byline, .muted { color: #64748b; }
+.cover { width: 100%; max-height: 440px; object-fit: cover; border-radius: 16px; margin: 20px 0; }
+.article-body, .comment-body { white-space: pre-line; overflow-wrap: anywhere; }
+.article-body { margin: 30px 0; }
+.button { display: inline-flex; gap: 28px; align-items: center; background: var(--primary); color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 650; }
+.button:hover { background: var(--accent); }
+.comments { background: var(--secondary); border-radius: 18px; padding: 28px; }
+.comments h2 { margin: 0 0 20px; }
+.comment { display: flex; gap: 16px; padding-block: 22px; border-top: 1px solid #0001; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.avatar-placeholder { display: grid; place-items: center; color: var(--primary); background: #fff; }
+.comment-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0; font-size: .85em; }
+.comment-meta > span:last-child { color: #64748b; }
+.badge { color: var(--primary); background: #fff; padding: 2px 8px; border-radius: 12px; font-size: .75rem; }
+.comment-body { margin: 6px 0 0; }
+.footer { padding-block: 32px; color: #64748b; font-size: .8em; }
+@media (max-width: 600px) { .site-header > .eyebrow { display: none; } .article { padding-top: 32px; } .comments { padding: 20px; } }

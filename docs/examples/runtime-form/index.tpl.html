@@ -1,0 +1,25 @@
+@template "Runtime request form" description="Query validation, request macros and an editable success message." version=1
+@section main "Main page"
+@param title String = "Заказать обратный звонок" label="Page title"
+@endsection
+@validation query fallback="/error.html"
+  @param subid String required
+  @param pixel String length=10 required
+@endvalidation
+@layout
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{title}}</title></head>
+<body>
+<main>
+  <h1>{{title}}</h1>
+  <form method="post" action="/success.php" data-pixel="{query.pixel}">
+    <input type="hidden" name="subid" value="{query.subid}">
+    <label>Имя <input name="name" required minlength="4" autocomplete="name"></label>
+    <label>Телефон <input name="phone" required placeholder="+380 123 456 789" autocomplete="tel"></label>
+    <button type="submit">Отправить</button>
+  </form>
+</main>
+</body>
+</html>
+@endlayout

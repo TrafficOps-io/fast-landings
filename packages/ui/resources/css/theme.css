@@ -1,0 +1,114 @@
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Onest Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    --color-zinc-50: #fafafa;
+    --color-zinc-100: #f5f5f5;
+    --color-zinc-200: #e5e5e5;
+    --color-zinc-300: #d4d4d4;
+    --color-zinc-400: #a3a3a3;
+    --color-zinc-500: #737373;
+    --color-zinc-600: #525252;
+    --color-zinc-700: #404040;
+    --color-zinc-800: #262626;
+    --color-zinc-900: #171717;
+    --color-zinc-950: #0a0a0a;
+
+    --color-accent: #e75d45;
+    --color-accent-content: #e75d45;
+    --color-accent-foreground: var(--color-white);
+}
+
+/* Величины макета и маркетинговой типографики. Блок обязан быть `static`: обычный `@theme`
+   вырезает модификаторы токенов, которые не запрашивает сгенерированная утилита, и рукописный
+   CSS (landing, public.css, gateway app.css) получил бы размер без интерлиньяжа и трекинга. */
+@theme static {
+    --container-page: 80rem;
+
+    /* Границы `clamp` у display и title подобраны под русский: при них самая длинная строка
+       заголовка («Наша технология.») укладывается в свою колонку на любой ширине и не ломается
+       переносом посреди слова. Это не круглые числа и не результат подбора «на глаз» —
+       не упрощайте их, не проверив переносы на ru и de. Происхождение: `.display`
+       и `.section-title` в `apps/landing/src/styles/global.css`, откуда шкала и взята. */
+    --text-display: clamp(2rem, 5.3vw, 4.75rem);
+    --text-display--line-height: 1.04;
+    --text-display--letter-spacing: -0.045em;
+    --text-display--font-weight: 600;
+
+    --text-title: clamp(2rem, 3.7vw, 3.3rem);
+    --text-title--line-height: 1.1;
+    --text-title--letter-spacing: -0.04em;
+    --text-title--font-weight: 600;
+
+    --text-heading: clamp(1.6rem, 2.3vw, 2.15rem);
+    --text-heading--line-height: 1.2;
+    --text-heading--letter-spacing: -0.035em;
+    --text-heading--font-weight: 600;
+
+    --text-lead: clamp(1rem, 1.15vw, 1.1875rem);
+    --text-lead--line-height: 1.72;
+    --text-lead--font-weight: 400;
+
+    --text-body: 1rem;
+    --text-body--line-height: 1.6;
+
+    --text-caption: 0.875rem;
+    --text-caption--line-height: 1.45;
+}
+
+@layer theme {
+    .dark {
+        --color-accent: #ff8068;
+        --color-accent-content: #ff8068;
+        --color-accent-foreground: #1d1a19;
+    }
+}
+
+@plugin "daisyui" {
+    themes: light --default, dark --prefersdark;
+    prefix: "d-";
+}
+
+:root {
+    --color-base-100: #fffdfb;
+    --color-base-200: #fbf7f2;
+    --color-base-300: #e7ddd6;
+    --color-base-content: #241f1d;
+    --color-primary: #e75d45;
+    --color-primary-content: #ffffff;
+    --color-accent: #e75d45;
+    --color-accent-content: #e75d45;
+    --color-accent-foreground: #ffffff;
+    --color-secondary: #766e69;
+    --color-secondary-content: #ffffff;
+    --color-neutral: #2f2926;
+    --color-neutral-content: #fffaf6;
+    --color-success: #2f8a62;
+    --color-success-content: #ffffff;
+    --color-warning: #b66a1e;
+    --color-error: #c94f4f;
+    --radius-selector: 0.55rem;
+    --radius-field: 0.55rem;
+    --radius-box: 0.75rem;
+}
+
+.dark {
+    --color-base-100: #262220;
+    --color-base-200: #1d1a19;
+    --color-base-300: #3b3430;
+    --color-base-content: #f7f0eb;
+    --color-primary: #ff8068;
+    --color-primary-content: #241f1d;
+    --color-accent: #ff8068;
+    --color-accent-content: #ff8068;
+    --color-accent-foreground: #241f1d;
+    --color-secondary: #b7aaa2;
+    --color-secondary-content: #1d1a19;
+    --color-neutral: #f7f0eb;
+    --color-neutral-content: #241f1d;
+    --color-success: #58b887;
+    --color-success-content: #14271d;
+    --color-warning: #e6a256;
+    --color-error: #f07979;
+}

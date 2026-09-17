@@ -1,0 +1,260 @@
+:root {
+    --ui-page: var(--color-base-200);
+    --ui-surface: var(--color-base-100);
+    --ui-border: var(--color-base-300);
+    --ui-muted: var(--color-secondary);
+    --ui-section-rhythm: clamp(4.5rem, 9vw, 8.5rem);
+    --ui-json-key: #9b3d30;
+    --ui-json-string: #26734d;
+    --ui-json-number: #7042a8;
+    --ui-json-boolean: #a35710;
+    --ui-json-null: #766e69;
+}
+
+.dark {
+    --ui-json-key: #ff947f;
+    --ui-json-string: #8bd5a8;
+    --ui-json-number: #c4a7e7;
+    --ui-json-boolean: #f2bd72;
+    --ui-json-null: #b7aaa2;
+}
+
+.ui-app-body {
+    background: var(--ui-page);
+    color: var(--color-base-content);
+}
+
+/* Единый контейнер ширины. Горизонтальные отступы лежат ВНУТРИ max-width — это то, что
+   выравнивает шапку с контентом. Внешние отступы у `<main>` дали бы другую боксовую модель,
+   и совпасть с шапкой они не смогли бы ни при каком значении max-width.
+   Значения 1280 px и 16/24/32 px — BRAND_GUIDELINES §8.1. */
+.ui-container {
+    width: 100%;
+    max-width: var(--container-page);
+    margin-inline: auto;
+    padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+    .ui-container {
+        padding-inline: 1.5rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .ui-container {
+        padding-inline: 2rem;
+    }
+}
+
+/* Печать: у `.ui-container` потолок в max-width, а отступ в padding-inline, поэтому
+   `width: 100%` их не снимает — нужны именно эти два свойства. */
+@media print {
+    .ui-container {
+        max-width: none;
+        padding-inline: 0;
+    }
+}
+
+.ui-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent);
+    background: color-mix(in srgb, var(--ui-page) 92%, transparent);
+    backdrop-filter: blur(14px);
+}
+
+.ui-panel {
+    border: 1px solid var(--ui-border);
+    border-radius: 0.75rem;
+    background: var(--ui-surface);
+    padding: 1.25rem;
+}
+
+.ui-status-badge {
+    color: color-mix(in srgb, var(--d-badge-color, var(--color-base-content)) 75%, var(--color-base-content));
+}
+
+.ui-json {
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+}
+
+.ui-json-key {
+    color: var(--ui-json-key);
+}
+
+.ui-json-string {
+    color: var(--ui-json-string);
+}
+
+.ui-json-number {
+    color: var(--ui-json-number);
+}
+
+.ui-json-boolean {
+    color: var(--ui-json-boolean);
+    font-weight: 600;
+}
+
+.ui-json-null {
+    color: var(--ui-json-null);
+    font-style: italic;
+}
+
+.ui-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 1.35rem;
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.ui-section-link {
+    position: relative;
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    color: color-mix(in srgb, var(--color-base-content) 58%, transparent);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.ui-section-link:hover,
+.ui-section-link.is-active {
+    color: var(--color-base-content);
+}
+
+.ui-section-link.is-active::after {
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--color-primary);
+    content: '';
+}
+
+.ui-utility-link,
+.ui-back-link,
+.ui-inline-link {
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.ui-utility-link {
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.65rem;
+}
+
+.ui-utility-link:hover,
+.ui-utility-link.is-active,
+.ui-back-link:hover,
+.ui-inline-link:hover {
+    color: var(--color-primary);
+}
+
+.ui-inline-link {
+    color: var(--color-primary);
+    white-space: nowrap;
+}
+
+.ui-eyebrow {
+    color: var(--color-primary);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+
+@media (max-width: 480px) {
+    .ui-section-nav {
+        column-gap: 0.7rem;
+    }
+
+    .ui-section-link {
+        font-size: 0.8rem;
+    }
+}
+
+.ui-section-nav.is-vertical {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+    border-bottom: 0;
+}
+
+.ui-section-nav.is-vertical .ui-section-link {
+    border-radius: var(--radius-field);
+    padding: 0.45rem 0.7rem;
+}
+
+.ui-section-nav.is-vertical .ui-section-link.is-active::after {
+    top: 0.35rem;
+    right: auto;
+    bottom: 0.35rem;
+    left: 0;
+    width: 2px;
+    height: auto;
+}
+
+.ui-section-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-top: 0.8rem;
+    border-top: 1px solid var(--ui-border);
+    padding-top: 0.8rem;
+}
+
+.ui-section-group-label {
+    margin: 0;
+    padding: 0.35rem 0.7rem;
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.ui-section-group .ui-section-link {
+    margin-left: 0.5rem;
+}
+
+@media (max-width: 767px) {
+    .ui-section-group {
+        flex-direction: row;
+        flex-shrink: 0;
+        align-items: center;
+        margin-top: 0;
+        border-top: 0;
+        border-left: 1px solid var(--ui-border);
+        padding: 0 0 0 0.9rem;
+    }
+
+    .ui-section-group-label {
+        white-space: nowrap;
+    }
+
+    .ui-section-nav.is-vertical {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        min-width: 0;
+        overflow-x: auto;
+        gap: 0.9rem;
+    }
+
+    .ui-section-nav.is-vertical .ui-section-link {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    .ui-section-nav.is-vertical .ui-section-link.is-active::after {
+        top: auto;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: auto;
+        height: 2px;
+    }
+}

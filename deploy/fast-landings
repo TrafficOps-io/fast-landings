@@ -1,0 +1,129 @@
+#!/bin/sh
+set -eu
+
+PATH_FILE=/etc/fast-landings-home
+[ -r "$PATH_FILE" ] || {
+    echo "Fast Landings installation metadata was not found." >&2
+    exit 1
+}
+
+INSTALL_ROOT=$(sed -n '1p' "$PATH_FILE")
+case "$INSTALL_ROOT" in
+    /|/tmp|/var|/opt|/usr|/etc|'')
+        echo "Unsafe Fast Landings installation path." >&2
+        exit 1
+        ;;
+    /*) ;;
+    *)
+        echo "Fast Landings installation path must be absolute." >&2
+        exit 1
+        ;;
+esac
+
+RELEASE_ENV=$INSTALL_ROOT/release.env
+COMPOSE_FILE=$INSTALL_ROOT/compose.yaml
+[ -r "$RELEASE_ENV" ] && [ -r "$COMPOSE_FILE" ] || {
+    echo "Fast Landings deployment metadata is incomplete." >&2
+    exit 1
+}
+
+compose() {
+    env \
+        -u COMPOSE_FILE \
+        -u COMPOSE_PROFILES \
+        -u COMPOSE_PROJECT_NAME \
+        -u APP_IMAGE \
+        -u WEB_IMAGE \
+        -u LANDING_PHP_IMAGE \
+        -u POSTGRES_IMAGE \
+        -u CADDY_IMAGE \
+        -u PHP_VERSION \
+        -u NODE_VERSION \
+        -u NGINX_VERSION \
+        -u FAST_LANDINGS_SOURCE_DIR \
+        -u FAST_LANDINGS_DATA_DIR \
+        -u FAST_LANDINGS_APP_ENV \
+        -u FAST_LANDINGS_EDGE_ENV \
+        -u FAST_LANDINGS_ADMIN_ENV \
+        -u FAST_LANDINGS_POSTGRES_PASSWORD_FILE \
+        -u FAST_LANDINGS_CADDYFILE \
+        -u FAST_LANDINGS_ADMIN_PASSWORD \
+        -u PANEL_HOST \
+        -u SYSTEM_HOST_SUFFIX \
+        -u ORIGIN_HOST \
+        -u ACME_EMAIL \
+        -u ADMIN_EMAIL \
+        -u ADMIN_NAME \
+        docker compose --env-file "$RELEASE_ENV" --file "$COMPOSE_FILE" "$@"
+}
+
+env_value() {
+    key=$1
+    awk -v wanted="$key" '
+        index($0, "=") > 0 && substr($0, 1, index($0, "=") - 1) == wanted {
+            print substr($0, index($0, "=") + 1)
+            exit
+        }
+    ' "$RELEASE_ENV"
+}
+
+usage() {
+    cat <<'USAGE'
+Usage: fast-landings <command>
+
+Commands:
+  status             Show container state
+  doctor             Validate configuration, containers, DB, and panel health
+  logs [service]     Follow bounded service logs
+  backup             Create a consistent root-only local backup
+  restart            Recreate the long-running services from pinned configuration
+USAGE
+}
+
+command_name=${1:-}
+case "$command_name" in
+    status)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        compose ps
+        ;;
+    doctor)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        compose config --quiet
+        compose ps
+        compose exec -T app php artisan migrate:status --no-ansi >/dev/null
+        panel_host=$(env_value PANEL_HOST)
+        [ -n "$panel_host" ] || { echo "PANEL_HOST is missing." >&2; exit 1; }
+        compose exec -T web wget -q -O /dev/null --header="Host: $panel_host" http://127.0.0.1:8080/up
+        compose exec -T projection /usr/local/bin/projection-healthcheck
+        compose exec -T landing-php /usr/local/bin/landing-php-healthcheck
+        echo "Fast Landings checks passed."
+        ;;
+    logs)
+        [ "$#" -le 2 ] || { usage >&2; exit 2; }
+        if [ "$#" -eq 1 ]; then
+            compose logs --follow --tail 200 postgres app queue scheduler projection web edge landing-php
+            exit 0
+        fi
+        case "$2" in
+            postgres|app|queue|scheduler|projection|web|edge|landing-php) ;;
+            *) echo "Unknown service: $2" >&2; exit 2 ;;
+        esac
+        compose logs --follow --tail 200 "$2"
+        ;;
+    backup)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        exec "$INSTALL_ROOT/backup.sh"
+        ;;
+    restart)
+        [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+        compose up --detach --remove-orphans --wait --wait-timeout 240
+        ;;
+    help|--help|-h|'')
+        usage
+        ;;
+    *)
+        echo "Unknown command: $command_name" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

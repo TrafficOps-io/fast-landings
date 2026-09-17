@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: dom, gd, intl, mbstring, pdo_sqlite, zip
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: npm ci
+      - run: npm run build
+      - run: cp .env.example .env
+      - run: composer validate --strict
+      - run: vendor/bin/pint --test
+      - run: php artisan test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:js
+      - run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local and production Compose files
+        run: |
+          docker compose config --quiet
+          export FAST_LANDINGS_SOURCE_DIR="$PWD"
+          export FAST_LANDINGS_DATA_DIR=/tmp/fast-landings-data
+          export FAST_LANDINGS_APP_ENV="$PWD/deploy/app.env.example"
+          export FAST_LANDINGS_EDGE_ENV="$PWD/deploy/edge.env.example"
+          export FAST_LANDINGS_ADMIN_ENV="$PWD/deploy/admin-bootstrap.env.example"
+          export FAST_LANDINGS_POSTGRES_PASSWORD_FILE="$PWD/deploy/postgres-password.example"
+          export FAST_LANDINGS_CADDYFILE="$PWD/deploy/Caddyfile"
+          export PANEL_HOST=panel.example.com
+          export SYSTEM_HOST_SUFFIX=go.example.com
+          export ORIGIN_HOST=203.0.113.10
+          export ADMIN_EMAIL=admin@example.com
+          docker compose --file deploy/compose.yaml config --quiet

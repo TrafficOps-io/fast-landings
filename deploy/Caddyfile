@@ -1,0 +1,148 @@
+{
+	admin off
+	email {$ACME_EMAIL}
+	http_port 8080
+	https_port 8443
+
+	on_demand_tls {
+		ask http://web:8081/internal/caddy/ask?token={$FAST_LANDINGS_CADDY_ASK_TOKEN}
+	}
+
+	servers {
+		protocols h1 h2
+		strict_sni_host on
+	}
+}
+
+(application) {
+	encode zstd gzip
+	header {
+		-Server
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Strict-Transport-Security "max-age=31536000"
+	}
+	reverse_proxy web:8080
+}
+
+# The panel certificate is managed eagerly. It is deliberately separate from
+# the on-demand catch-all because the ask endpoint rejects the panel hostname.
+{$PANEL_HOST} {
+	import application
+}
+
+# Caddy listens on non-privileged container ports. Keep the public redirect
+# authority explicit so the internal 8443 port is never exposed to clients.
+http:// {
+	redir https://{http.request.host}{http.request.uri} permanent
+}
+
+# Unknown names reach the ask endpoint and receive no certificate. Approved
+# landing hosts bypass Laravel. Caddy serves assets; the isolated landing PHP
+# pool executes scripts. projection-sync maintains active roots atomically.
+https:// {
+	tls {
+		on_demand
+	}
+
+	# Refuse non-canonical Host values before a request-derived filesystem root
+	# is considered. strict_sni_host additionally binds this to the TLS SNI.
+	@invalidLandingHost {
+		not header_regexp canonical Host ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(:443)?$
+	}
+	respond @invalidLandingHost 421
+
+	# A route block preserves cache decisions after internal rewrites.
+	route {
+		encode zstd gzip
+
+		# Use certificate-validated SNI, never raw Host, as a path component.
+		# strict_sni_host above requires the HTTP Host to match it.
+		root * /srv/landings/hosts/{http.request.tls.server_name}
+
+		@hidden path_regexp hidden (^|/)\.
+		respond @hidden 404
+
+		# Template/include/config/backup sources are never downloadable. A PHP
+		# suffix with different case or PATH_INFO is not an executable endpoint.
+		@source path_regexp source (?i)\.(tpl|inc|phtml|phar|php[0-9]+|env|ini|log|sql|sqlite3?|bak|backup|old|orig|save|swp|swo)([./]|$)|\.php[./]
+		respond @source 404
+		@nonCanonicalPhp {
+			path_regexp phpCase (?i)\.php$
+			not path_regexp phpLower \.php$
+		}
+		respond @nonCanonicalPhp 404
+
+		request_body {
+			max_size 16777216
+		}
+
+		@directoryQuery {
+			file {path}/index.php {path}/index.html
+			not path */
+			expression {http.request.uri.query} != ""
+		}
+		redir @directoryQuery {http.request.orig_uri.path}/?{http.request.uri.query} 308
+		@directory {
+			file {path}/index.php {path}/index.html
+			not path */
+		}
+		redir @directory {http.request.orig_uri.path}/ 308
+		try_files {path} {path}/index.php {path}/index.html
+
+		# Request macros turn HTML pages into sibling PHP scripts. Keep the
+		# original URL (including POST body/query) usable without a redirect.
+		@runtimeHtml {
+			path *.html
+			not file
+		}
+		uri @runtimeHtml path_regexp \.html$ .php
+
+		header {
+			-Server
+			X-Content-Type-Options nosniff
+			Referrer-Policy strict-origin-when-cross-origin
+		}
+
+		@missingPhp {
+			path *.php
+			not file
+		}
+		respond @missingPhp 404
+		@php path *.php
+		reverse_proxy @php landing-php:9000 {
+			transport fastcgi {
+				split .php
+				resolve_root_symlink
+				read_timeout 40s
+			}
+			header_down Cache-Control "no-store, private"
+		}
+
+		# SPA fallback applies only to extensionless application routes. A missing
+		# script, stylesheet, image, or other asset remains a real 404.
+		@spa {
+			method GET HEAD
+			not file {path} /index.php
+			not path_regexp fileExtension \.[^/]+$
+		}
+		rewrite @spa /index.html
+		@staticWrite not method GET HEAD
+		header @staticWrite Allow "GET, HEAD"
+		respond @staticWrite 405
+
+		header Cache-Control "no-cache, private"
+		@asset path_regexp assetExtension \.[^/]+$
+		header @asset Cache-Control "public, no-cache"
+		@html path *.html
+		header @html Cache-Control "no-cache, private"
+		file_server
+	}
+}
+
+# Container-only liveness listener. It is bound to loopback and never published.
+http://127.0.0.1:2019 {
+	respond /healthz "ok" 200
+}

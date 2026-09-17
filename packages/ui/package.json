@@ -1,0 +1,23 @@
+{
+  "name": "@trafficops/fast-landings-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "style": "./resources/css/index.css",
+  "exports": {
+    "./public-theme": "./resources/js/public-theme.js",
+    "./public-header": "./resources/js/public-header.js",
+    "./image-editor": "./resources/js/image-editor.js",
+    "./tag-select": "./resources/js/tag-select.js",
+    "./styles.css": "./resources/css/index.css",
+    "./flux.css": "./resources/css/integrations/flux.css",
+    "./error-page.css": "./resources/css/error-page.css"
+  },
+  "peerDependencies": {
+    "tailwindcss": "^4.0.7"
+  },
+  "dependencies": {
+    "daisyui": "^5.0"
+  }
+}

@@ -1,0 +1,108 @@
+@template "Editorial article" description="An article with brand colors, configurable blocks and reader comments." version=1
+
+@type Header
+@param brand String = "Everyday Journal" label="Brand name" required=true
+@param tagline String = "Ideas for everyday life" label="Header tagline"
+@param logo Image = "assets/logo.svg" label="Logo" help="Choose an image URL, a bundled asset, or upload a logo."
+@endtype
+
+@type Article
+@param category Select = "Lifestyle" label="Category" options="Lifestyle:Lifestyle|Wellness:Wellness|Technology:Technology"
+@param title String = "Small changes. A brighter everyday." label="Article title" required=true
+@param intro Text = "A practical guide to making room for the things that matter." label="Introduction"
+@param author String = "The editorial team" label="Author"
+@param cover Image label="Cover image" aspect_ratio="16:9"
+@param body Text = "Good habits start with a little space to think. Pick one small change that makes your day simpler, and give it time.\n\nA walk outside, a short conversation, or a few minutes away from a screen can help you find a fresh perspective.\n\nBuild a routine that works for you. Keep what helps, adjust what does not, and celebrate steady progress." label="Article text" required=true
+@param ctaLabel String = "Explore the guide" label="Button label"
+@param ctaUrl Url = "https://example.com" label="Button URL" required=true
+@endtype
+
+@type Comment
+@param name String = "Alex" label="Reader name" required=true
+@param body Text = "The suggestion to start small really resonated with me." label="Comment text" required=true
+@param avatar Image = "assets/avatar.svg" label="Reader avatar" sizes="128x128|256x256"
+@param date String = "Today" label="Date label"
+@param verified Boolean = true label="Verified reader"
+@endtype
+
+@type Comments
+@param enabled Boolean = true label="Show comments"
+@param title String = "From our readers" label="Section heading"
+@param items Comment[] label="Reader comments" min_items=1 max_items=20
+@endtype
+
+@section appearance "Appearance"
+@param primary Color = "#0f766e" label="Primary color"
+@param secondary Color = "#f0fdfa" label="Secondary color"
+@param accent Color = "#115e59" label="Accent color"
+@param text Color = "#172b2b" label="Text color"
+@param fontSize Range = 18 label="Body font size" min=14 max=24 step=1 help="Size in pixels."
+@endsection
+
+@section header "Header"
+@param header Header label="Header block"
+@endsection
+
+@section article "Article"
+@param article Article label="Article block"
+@endsection
+
+@section discussion "Comments"
+@param comments Comments label="Comments block"
+@endsection
+
+@section footer "Footer"
+@param footerNote String = "Made for curious people." label="Footer note"
+@endsection
+
+@include "blocks/comment.tpl"
+
+@block siteHeader(header: Header)
+<header class="site-header shell">
+  <a class="brand" href="#article">
+    @if header.logo
+    <img class="logo" src="{{header.logo}}" alt="">
+    @endif
+    <span>{{header.brand}}</span>
+  </a>
+  <span class="eyebrow">{{header.tagline}}</span>
+</header>
+@endblock
+
+@block articleBody(article: Article)
+<article id="article" class="article">
+  <p class="eyebrow">{{article.category}}</p>
+  <h1>{{article.title}}</h1>
+  <p class="lead">{{article.intro}}</p>
+  <p class="byline">By {{article.author}}</p>
+  @if article.cover
+  <img class="cover" src="{{article.cover}}" alt="{{article.title}}">
+  @endif
+  <div class="article-body">{{article.body}}</div>
+  <a class="button" href="{{article.ctaUrl}}">{{article.ctaLabel}} <span aria-hidden="true">↗</span></a>
+</article>
+@endblock
+
+@layout
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{article.title}} · {{header.brand}}</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <style>
+    :root { --primary: {{primary}}; --secondary: {{secondary}}; --accent: {{accent}}; --text: {{text}}; --font-size: {{fontSize}}px; }
+  </style>
+</head>
+<body>
+  @render siteHeader(header)
+  <main class="shell">
+    @render articleBody(article)
+    @render commentsList(comments)
+  </main>
+  <footer class="shell footer">{{header.brand}} <span data-year></span> · {{footerNote}}</footer>
+  <script src="assets/app.js" defer></script>
+</body>
+</html>
+@endlayout

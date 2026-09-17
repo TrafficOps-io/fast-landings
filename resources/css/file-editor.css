@@ -1,0 +1,13 @@
+.file-editor-canvas {
+    height: clamp(24rem, 64vh, 60rem);
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.file-editor-canvas .monaco-editor { text-align: left; }
+.file-editor-canvas .monaco-editor .inputarea { box-shadow: none; }
+
+@media (max-width: 640px) {
+    .file-editor-canvas { height: 60vh; min-height: 22rem; }
+}

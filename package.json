@@ -1,0 +1,32 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "name": "@trafficops/fast-landings",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "test:js": "node --test tests/js/*.test.js",
+        "previews:install": "playwright install chromium"
+    },
+    "dependencies": {
+        "@trafficops/fast-landings-ui": "file:packages/ui",
+        "@fontsource-variable/onest": "^5.3.1",
+        "@tiptap/core": "^3.31.3",
+        "@tiptap/extension-image": "^3.31.3",
+        "@tiptap/pm": "^3.31.3",
+        "@tiptap/starter-kit": "^3.31.3",
+        "ipaddr.js": "^2.5.0",
+        "monaco-editor": "^0.55.1",
+        "playwright": "^1.63.0"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.0.0",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "laravel-vite-plugin": "^2.0.0",
+        "tailwindcss": "^4.0.0",
+        "vite": "^7.0.7"
+    }
+}
