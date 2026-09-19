@@ -15,6 +15,7 @@ use App\Models\LandingTemplate;
 use App\Models\User;
 use App\Services\LandingArchiveService;
 use App\Services\Templates\TemplateArchiveService;
+use App\Services\Templates\TemplateEditorPreview;
 use App\Services\Templates\TemplateLandingService;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -371,6 +372,47 @@ TPL;
             ->call('removeItem', 'comments.items', 0)
             ->assertSet('values.comments.items.0.name', 'Second reader')
             ->assertHasNoErrors();
+    }
+
+    public function test_editor_ai_capability_can_be_removed_without_disabling_the_editor(): void
+    {
+        $template = $this->import($this->definitionFile());
+        config(['fast-landings.editor.ai' => false]);
+
+        Livewire::test(FromTemplate::class, ['template' => $template])
+            ->assertSee('LIVE PREVIEW')
+            ->assertDontSee('Generate content with AI')
+            ->call('generateContent')
+            ->assertNotFound();
+    }
+
+    public function test_editor_preview_renders_unsaved_values_and_only_serves_declared_assets(): void
+    {
+        $template = $this->import($this->zip([
+            'index.tpl.html' => <<<'TPL'
+@template "Live editor"
+@param title String = "Default" required
+@layout
+<!doctype html><html><head><link rel="stylesheet" href="assets/site.css"></head><body><h1>{{title}}</h1></body></html>
+@endlayout
+TPL,
+            'assets/site.css' => 'body { color: teal; }',
+        ]));
+
+        $html = app(TemplateEditorPreview::class)->render($template, ['title' => 'Unsaved title']);
+        $assetBase = str_replace('__PATH__', '', route('templates.asset', [
+            'template' => $template,
+            'path' => '__PATH__',
+        ]));
+
+        $this->assertNotNull($html);
+        $this->assertStringContainsString('Unsaved title', $html);
+        $this->assertStringContainsString('<base href="'.$assetBase.'">', $html);
+        $this->get(route('templates.asset', ['template' => $template, 'path' => 'assets/site.css']))
+            ->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->get(route('templates.asset', ['template' => $template, 'path' => 'assets/missing.css']))
+            ->assertNotFound();
     }
 
     public function test_deleting_repeater_row_keeps_surviving_upload_with_its_comment(): void

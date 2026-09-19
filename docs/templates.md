@@ -26,6 +26,12 @@ Applying a result replaces the current template values. Pending uploads attached
 
 The AI receives the user's prompt, current values, the complete typed schema with field/group/repeater `aiInstructions`, reusable block instructions, layout context, and TPL data rules. It returns values rather than editable template code. Unknown fields, invalid types, out-of-range values, wrong explicit array counts, and image sources that were not supplied are rejected before applying a result. Generated images are centered and cropped/resized to the field's first allowed size or aspect ratio.
 
+AI is a Fast Landings host capability, not a feature of the public TrafficOps
+Template Studio. `FAST_LANDINGS_EDITOR_AI=false` removes the panel and rejects its
+server actions; it does not affect the settings editor, live preview, or image
+crop/resize controls. The default is enabled. The public Netlify Studio passes no
+AI capability and therefore contains neither provider controls nor provider calls.
+
 Uploads accept JPEG, PNG, WebP, GIF, and AVIF: up to 8 files per purpose, 10 MB each, 20 MB total, and 25 megapixels per image. AI receives resized JPEG copies (up to 1568 pixels on the longest edge); the original website uploads are used for the landing, with cropping where required. Reference uploads are kept privately only while the job needs them. At most 8 images can be generated per request after arrays are expanded. Provider errors leave the form unchanged; retrying is an explicit action, because an interrupted provider call can still be billed.
 
 ### Providers and models

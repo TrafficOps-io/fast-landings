@@ -25,8 +25,8 @@
 
     @include('livewire.landings.partials.ai-generation')
 
-    <form id="template-landing-form" wire:submit="create" novalidate class="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
-        <nav aria-label="Landing settings sections" class="flex gap-2 overflow-x-auto rounded-box border border-base-300 bg-base-100 p-2 lg:sticky lg:top-6 lg:grid lg:gap-1">
+    <form id="template-landing-form" wire:submit="create" novalidate class="fl-studio-grid">
+        <nav aria-label="Landing settings sections" class="fl-studio-nav">
             <button type="button" class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-3 text-left text-sm" @click="section = 0" :class="section === 0 ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-base-200 text-base-content/65'" :aria-current="section === 0 ? 'step' : null">
                 <span class="font-mono text-xs opacity-60">01</span><span>Landing details</span>
                 @if ($errors->hasAny(['name', 'slug', 'description']))<span class="text-error" aria-label="Contains errors">•</span>@endif
@@ -79,5 +79,16 @@
                 <button type="submit" class="d-btn d-btn-primary d-btn-sm" x-show="section === {{ count($sections) }}" x-cloak :disabled="uploadsInProgress > 0" wire:loading.attr="disabled" wire:target="create,uploads">Create landing</button>
             </div>
         </div>
+        <aside class="fl-studio-preview" aria-label="Live preview">
+            <header><span><span class="fl-live-dot"></span> LIVE PREVIEW</span><span>DESKTOP</span></header>
+            <div class="fl-preview-stage">
+                @if ($previewHtml !== null)
+                    <div class="fl-browser-frame"><div class="fl-browser-bar"><i></i><i></i><i></i><span>index.html</span></div><iframe title="Landing preview" sandbox="" referrerpolicy="no-referrer" srcdoc="{{ $previewHtml }}"></iframe></div>
+                @else
+                    <div class="fl-preview-empty"><strong>Preview unavailable</strong><span>Complete the required fields to render this template.</span></div>
+                @endif
+            </div>
+            <footer>Static preview · scripts disabled</footer>
+        </aside>
     </form>
 </div>

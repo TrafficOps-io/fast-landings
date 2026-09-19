@@ -6,6 +6,7 @@ use App\Livewire\Landings\Concerns\InteractsWithAiGeneration;
 use App\Livewire\Landings\Concerns\InteractsWithLandingTags;
 use App\Livewire\Landings\Concerns\InteractsWithTemplateForm;
 use App\Models\LandingTemplate;
+use App\Services\Templates\TemplateEditorPreview;
 use App\Services\Templates\TemplateLandingService;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -67,13 +68,14 @@ class FromTemplate extends Component
         $this->redirectRoute('landings.show', $landing, navigate: true);
     }
 
-    public function render()
+    public function render(TemplateEditorPreview $preview)
     {
         $this->activeUser();
 
         return view('livewire.landings.from-template', array_merge($this->generationViewData(), [
             'tagSuggestions' => $this->tagSuggestions(),
             'sections' => $this->template->definition['sections'],
+            'previewHtml' => $preview->render($this->template, $this->values),
         ]))->layout('components.layouts.app', ['title' => 'Create from template · Fast Landings']);
     }
 }

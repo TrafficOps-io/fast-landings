@@ -1,4 +1,5 @@
-<section aria-label="AI content generation" class="rounded-box border border-base-300 bg-base-100 p-5 sm:p-6">
+@if ($aiEnabled)
+<section aria-label="AI content generation" class="rounded-box border border-base-300 bg-base-100 p-5 sm:p-6" data-editor-capability="ai">
     <details wire:ignore.self @if ($generation && !$generation->applied_at) open @endif>
         <summary class="cursor-pointer text-base font-semibold">Generate content with AI <span class="ml-2 text-sm font-normal text-base-content/55">Optional</span></summary>
         <div class="mt-4 grid gap-5">
@@ -114,3 +115,4 @@
         </div>
     </details>
 </section>
+@endif

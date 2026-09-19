@@ -5,6 +5,7 @@ namespace App\Livewire\Landings;
 use App\Livewire\Landings\Concerns\InteractsWithTemplateForm;
 use App\Models\Landing;
 use App\Models\LandingTemplate;
+use App\Services\Templates\TemplateEditorPreview;
 use App\Services\Templates\TemplateLandingService;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
@@ -69,7 +70,7 @@ class EditTemplate extends Component
         $this->redirectRoute('landings.show', $landing, navigate: true);
     }
 
-    public function render()
+    public function render(TemplateEditorPreview $preview)
     {
         $this->activeUser();
         $landing = $this->landing();
@@ -78,6 +79,9 @@ class EditTemplate extends Component
             'landing' => $landing,
             'templates' => LandingTemplate::query()->orderBy('name')->get(),
             'sections' => $this->template?->definition['sections'] ?? [],
+            'previewHtml' => $this->template
+                ? $preview->render($this->template, $this->values, $landing->activeRelease)
+                : null,
         ])->layout('components.layouts.app', ['title' => 'Edit content · '.$landing->name.' · Fast Landings']);
     }
 

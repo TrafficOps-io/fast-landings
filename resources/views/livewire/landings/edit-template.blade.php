@@ -42,8 +42,8 @@
         <p x-show="uploadsInProgress > 0" x-cloak class="text-sm text-base-content/65" role="status">Uploading images… Please wait before saving.</p>
 
         @if ($template)
-            <form id="edit-template-form" wire:submit="save" novalidate class="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]" wire:key="edit-template-{{ $template->id }}" x-data="{ section: 0 }">
-                <nav aria-label="Template settings sections" class="flex gap-2 overflow-x-auto rounded-box border border-base-300 bg-base-100 p-2 lg:sticky lg:top-6 lg:grid lg:gap-1">
+            <form id="edit-template-form" wire:submit="save" novalidate class="fl-studio-grid" wire:key="edit-template-{{ $template->id }}" x-data="{ section: 0 }">
+                <nav aria-label="Template settings sections" class="fl-studio-nav">
                     @foreach ($sections as $section)
                         <button type="button" class="flex shrink-0 items-center gap-3 rounded-lg px-3 py-3 text-left text-sm" @click="section = {{ $loop->index }}" :class="section === {{ $loop->index }} ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-base-200 text-base-content/65'" :aria-current="section === {{ $loop->index }} ? 'step' : null">
                             <span class="font-mono text-xs opacity-60">{{ str_pad($loop->iteration, 2, '0', STR_PAD_LEFT) }}</span><span>{{ $section['label'] }}</span>
@@ -67,6 +67,17 @@
                         <button type="submit" class="d-btn d-btn-primary d-btn-sm" :disabled="uploadsInProgress > 0" wire:loading.attr="disabled">Save and activate</button>
                     </div>
                 </div>
+                <aside class="fl-studio-preview" aria-label="Live preview">
+                    <header><span><span class="fl-live-dot"></span> LIVE PREVIEW</span><span>DESKTOP</span></header>
+                    <div class="fl-preview-stage">
+                        @if ($previewHtml !== null)
+                            <div class="fl-browser-frame"><div class="fl-browser-bar"><i></i><i></i><i></i><span>index.html</span></div><iframe title="Landing preview" sandbox="" referrerpolicy="no-referrer" srcdoc="{{ $previewHtml }}"></iframe></div>
+                        @else
+                            <div class="fl-preview-empty"><strong>Preview unavailable</strong><span>Complete the required fields to render this template.</span></div>
+                        @endif
+                    </div>
+                    <footer>Static preview · scripts disabled</footer>
+                </aside>
             </form>
         @endif
     </div>

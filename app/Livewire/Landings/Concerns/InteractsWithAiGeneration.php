@@ -60,6 +60,7 @@ trait InteractsWithAiGeneration
 
     public function generateContent(TemplateContentGenerator $generator, AiProviderClient $client): void
     {
+        abort_unless($this->aiEditorEnabled(), 404);
         $user = $this->activeUser();
         $this->resetValidation('generation');
         $this->assertNoPendingFieldUploads();
@@ -167,6 +168,7 @@ trait InteractsWithAiGeneration
 
     public function applyGeneration(): void
     {
+        abort_unless($this->aiEditorEnabled(), 404);
         $this->activeUser();
         $this->assertNoPendingFieldUploads();
         $generation = $this->currentGeneration();
@@ -219,17 +221,34 @@ trait InteractsWithAiGeneration
 
     private function generationViewData(): array
     {
+        if (! $this->aiEditorEnabled()) {
+            return [
+                'aiEnabled' => false,
+                'aiConnections' => collect(),
+                'aiSupportsImages' => null,
+                'aiSupportsVision' => null,
+                'generationFields' => ['arrays' => [], 'images' => []],
+                'generation' => null,
+            ];
+        }
+
         $installations = Installation::query()->limit(2)->get();
         $connections = $installations->count() === 1 ? $installations->first()->aiIntegrations()->orderBy('name')->get(['id', 'name', 'provider']) : collect();
         $selected = $connections->firstWhere('id', $this->aiIntegrationId);
         $client = app(AiProviderClient::class);
 
         return [
+            'aiEnabled' => true,
             'aiConnections' => $connections,
             'aiSupportsImages' => $selected ? $client->supportsImages($selected) : null,
             'aiSupportsVision' => $selected ? $client->supportsVision($selected) : null,
             'generationFields' => app(TemplateContentGenerator::class)->fields($this->template->definition),
             'generation' => $this->currentGeneration(),
         ];
+    }
+
+    private function aiEditorEnabled(): bool
+    {
+        return (bool) config('fast-landings.editor.ai', true);
     }
 }

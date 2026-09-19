@@ -43,7 +43,7 @@
                 </fieldset>
             @elseif ($fieldType === 'checkbox')
                 <label class="flex items-start gap-3" for="{{ $fieldId }}">
-                    <input id="{{ $fieldId }}" type="checkbox" wire:model="{{ $valuePath }}" class="d-checkbox d-checkbox-primary mt-0.5" aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
+                    <input id="{{ $fieldId }}" type="checkbox" wire:model.live="{{ $valuePath }}" class="d-checkbox d-checkbox-primary mt-0.5" aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
                     <span class="grid gap-1"><span class="text-sm font-medium">{{ $fieldLabel }}</span>@if (!empty($field['help']))<span id="{{ $fieldId }}-help" class="text-xs leading-5 text-base-content/55">{{ $field['help'] }}</span>@endif</span>
                 </label>
             @else
@@ -53,7 +53,7 @@
                 @elseif (in_array($fieldType, ['text', 'textarea', 'url', 'email'], true))
                     @include('templates.macro-input')
                 @elseif ($fieldType === 'select')
-                    <select id="{{ $fieldId }}" wire:model="{{ $valuePath }}" class="d-select d-select-bordered w-full" @required($field['required'] ?? false) aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
+                    <select id="{{ $fieldId }}" wire:model.live="{{ $valuePath }}" class="d-select d-select-bordered w-full" @required($field['required'] ?? false) aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
                         @unless (array_key_exists('', $field['options']))<option value="" disabled>Select an option</option>@endunless
                         @foreach ($field['options'] as $optionValue => $optionLabel)<option value="{{ $optionValue }}">{{ $optionLabel }}</option>@endforeach
                     </select>
@@ -82,7 +82,7 @@
                 @elseif ($fieldType === 'image')
                     @include('templates.image-field')
                 @else
-                    <input id="{{ $fieldId }}" type="{{ in_array($fieldType, ['number', 'url', 'email'], true) ? $fieldType : 'text' }}" wire:model="{{ $valuePath }}" class="d-input d-input-bordered w-full" @required($field['required'] ?? false) @if ($fieldType === 'number') @if (isset($field['min'])) min="{{ $field['min'] }}" @endif @if (isset($field['max'])) max="{{ $field['max'] }}" @endif step="{{ $field['step'] ?? 'any' }}" @elseif (isset($field['max'])) maxlength="{{ $field['max'] }}" @endif aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
+                    <input id="{{ $fieldId }}" type="{{ in_array($fieldType, ['number', 'url', 'email'], true) ? $fieldType : 'text' }}" wire:model.live.debounce.350ms="{{ $valuePath }}" class="d-input d-input-bordered w-full" @required($field['required'] ?? false) @if ($fieldType === 'number') @if (isset($field['min'])) min="{{ $field['min'] }}" @endif @if (isset($field['max'])) max="{{ $field['max'] }}" @endif step="{{ $field['step'] ?? 'any' }}" @elseif (isset($field['max'])) maxlength="{{ $field['max'] }}" @endif aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
                 @endif
                 @if (!empty($field['help']))<p id="{{ $fieldId }}-help" class="mt-1.5 text-xs leading-5 text-base-content/55">{{ $field['help'] }}</p>@endif
             @endif

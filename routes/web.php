@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\FileWorkspaceController;
 use App\Http\Controllers\LandingDownloadController;
 use App\Http\Controllers\LandingPreviewController;
+use App\Http\Controllers\TemplateAssetController;
 use App\Http\Controllers\TemplateImageController;
 use App\Http\Controllers\TemplateMediaController;
 use App\Http\Controllers\TemplatePreviewController;
@@ -40,6 +41,8 @@ Route::domain(config('fast-landings.panel_domain'))->group(function (): void {
             Route::get('/landings/{landing}/template', EditTemplate::class)->name('landings.edit-template');
             Route::get('/landings/{landing}', LandingShow::class)->name('landings.show');
             Route::get('/templates/{template}/image', [TemplateImageController::class, 'template'])->name('templates.image');
+            Route::get('/templates/{template}/assets/{path}', TemplateAssetController::class)
+                ->where('path', '.*')->name('templates.asset');
             Route::get('/templates/{template}/preview', TemplatePreviewController::class)->name('templates.preview');
             Route::get('/landing-releases/{release}/image', [TemplateImageController::class, 'release'])->name('landings.release-image');
             Route::get('/landing-releases/{release}/preview', LandingPreviewController::class)->name('landings.preview');

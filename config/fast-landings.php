@@ -4,6 +4,10 @@ $appHost = parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST) 
 $panelDomain = strtolower(rtrim((string) env('FAST_LANDINGS_PANEL_DOMAIN', $appHost), '.'));
 
 return [
+    'editor' => [
+        // Host capability: the public Template Studio intentionally does not enable this.
+        'ai' => (bool) env('FAST_LANDINGS_EDITOR_AI', true),
+    ],
     'panel_domain' => $panelDomain,
     'system_domain' => strtolower(rtrim((string) env('FAST_LANDINGS_SYSTEM_DOMAIN', $panelDomain), '.')),
     'origin_target' => strtolower(rtrim((string) env('FAST_LANDINGS_ORIGIN_TARGET', $panelDomain), '.')),
