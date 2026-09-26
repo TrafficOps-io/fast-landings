@@ -26,7 +26,7 @@ Open-source, self-hosted HTML/PHP landing deployment for TrafficOps. Upload a ZI
 
 `/admin/landings` displays responsive cards with a screenshot, publication status, tags, domain/release counts, and a link to the landing. Search by name, slug, description, or tag; combine a tag filter with a status filter. Results are paginated and filters stay in the URL.
 
-Use **Download ZIP** on a landing card or its details page to download the active release, including generated pages and previously uploaded websites. Each release in the history also has its own download link. The archive contains that release's published website files at the ZIP root, including compiled PHP pages and assets, and excludes private editor metadata. Downloads are available to signed-in panel users even when the landing is paused or has no domain. When hosting elsewhere, PHP pages need PHP support; links to `.html` pages compiled to `.php` need the same `.html` → `.php` fallback used by Fast Landings.
+Use **Download ZIP** on a landing card or its details page to download the active release, including generated pages and previously uploaded files. Each release in the history also has its own download link. The archive contains that release's files at the ZIP root, including compiled PHP pages and assets, and excludes private editor metadata. Downloads are available to signed-in panel users even when the landing is paused or has no domain. When hosting elsewhere, PHP pages need PHP support; links to `.html` pages compiled to `.php` need the same `.html` → `.php` fallback used by Fast Landings.
 
 Add or select tags when deploying a ZIP, creating from a template, or saving a landing's settings. Press Enter or comma to add a tag; remove it with ×. Up to 20 tags of 60 characters each are supported. Tags use [Spatie Laravel Tags](https://spatie.be/docs/laravel-tags/v4/introduction) with an ULID polymorphic pivot matching the landing IDs. Updating or rolling back content preserves the landing's tags.
 
@@ -136,13 +136,13 @@ Existing installations must run `php artisan migrate` for domain scopes and pare
 
 - An exact lowercase `index.php` or `index.html` must exist at the archive root or in one top-level wrapper folder.
 - Assets may use arbitrary nested directories.
-- PHP files execute in the dedicated website runtime. If both root indexes exist, `index.php` takes precedence. PHP sources are never served as static bytes; an unavailable runtime returns an error.
+- PHP files execute in the dedicated landing PHP runtime. If both root indexes exist, `index.php` takes precedence. PHP sources are never served as static bytes; an unavailable runtime returns an error.
 - Default limits: 100 MB compressed, 300 MB extracted, and 5,000 files. Configure them with `FAST_LANDINGS_MAX_*` variables.
 - A new valid upload becomes active atomically. Older releases remain available for one-click rollback.
 
-## PHP websites and forms
+## PHP landings and forms
 
-A landing is a whole website release. Files in the same ZIP share the same domain and relative URL space. Upload `index.php` plus `success.php`, or use an HTML form page with a PHP handler:
+A landing serves exactly one active release, and a release is one immutable build of all of the landing's files. Files in the same release share the same domain and relative URL space. Upload `index.php` plus `success.php`, or use an HTML form page with a PHP handler:
 
 ```html
 <form method="post" action="/success.php">
@@ -157,7 +157,7 @@ $name = is_string($_POST['name'] ?? null) ? $_POST['name'] : '';
 echo 'Hello, '.htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 ```
 
-PHP receives query parameters, form fields, uploaded files, cookies and raw request bodies through the usual `$_GET`, `$_POST`, `$_FILES`, `$_COOKIE` and `php://input`. Scripts can use `include`/`require`, sessions, response headers, redirects, and outbound HTTP calls. Public form requests bypass the panel's session and CSRF middleware. Implement validation and any CSRF protection needed by your website in its own PHP code.
+PHP receives query parameters, form fields, uploaded files, cookies and raw request bodies through the usual `$_GET`, `$_POST`, `$_FILES`, `$_COOKIE` and `php://input`. Scripts can use `include`/`require`, sessions, response headers, redirects, and outbound HTTP calls. Public form requests bypass the panel's session and CSRF middleware. Implement validation and any CSRF protection needed by your landing in its own PHP code.
 
 Template page names describe build output: `index.tpl.html` becomes `index.html`, `index.tpl.php` becomes `index.php`, and `success.tpl.php` becomes `success.php`. Settings are substituted when a release is generated; request macros such as `{body.name}` are resolved for each visitor. Pages containing macros or `@validation` compile to PHP, including HTML pages; their original `.html` URLs continue to accept requests. See [request macros and validation](docs/templates.md#request-macros-and-validation) for typed rules, fallback redirects, supported contexts and autocomplete in landing settings. Template sources are never executed during import or generation.
 
@@ -165,7 +165,7 @@ Download the [working form template ZIP](public/examples/form-website-template.z
 
 For local development, set `FAST_LANDINGS_PHP_UID` and `FAST_LANDINGS_PHP_GID` in `.env` to the numeric output of `id -u` and `id -g`, then run `docker compose up -d --build --wait` from the repository root. The local PHP container uses your filesystem identity to read the private release bind mount; production uses its separate projection and service identity. The panel/dev server proxies PHP requests to the runtime at `FAST_LANDINGS_PHP_ADDRESS` (default `tcp://127.0.0.1:9070`). Production installs/upgrades must rebuild and start the `landing-php` service and use the updated Caddy configuration; see [deployment instructions](deploy/README.md). No database migration is required for PHP entrypoints.
 
-The runtime has no panel code, panel environment, database credentials or database network. Release files are read-only; temporary uploads and sessions use runtime storage. This supports ordinary landing scripts, but applications that install packages or write into the web root need a separate deployment. Upload PHP only from trusted authors: this is an installation-wide website runtime, not a hostile-code sandbox for unrelated tenants.
+The runtime has no panel code, panel environment, database credentials or database network. Release files are read-only; temporary uploads and sessions use runtime storage. This supports ordinary landing scripts, but applications that install packages or write into the web root need a separate deployment. Upload PHP only from trusted authors: this is an installation-wide landing PHP runtime, not a hostile-code sandbox for unrelated tenants.
 
 Library screenshots do not execute uploaded PHP. A landing whose main page is PHP has no automatic local screenshot; a template can use `previewUrl` for a public rendered demonstration. HTML main pages with PHP form handlers retain normal screenshots.
 
@@ -177,9 +177,9 @@ Template cards support optional screenshot previews, using the same queue and Ch
 
 `Wysiwyg` and `Markdown` fields provide formatted editing, links, image uploads and Markdown preview. Render their sanitized content using `{{& field}}`. Editor images use native Livewire uploads and Laravel Filesystem; set `FAST_LANDINGS_MEDIA_DISK` to `local`, `s3` or any configured disk. Run `php artisan migrate` to add the media registry. See the [rich text example](public/examples/rich-text-template.tpl) and [storage configuration](docs/templates.md#image-storage-disks).
 
-Administrators can import a single HTML/PHP/TXT/TPL source or a ZIP containing an index or legacy `template.html`, additional pages, source fragments, and assets. On **Templates**, **Edit** changes a template's name and description and optionally replaces its source or ZIP package while keeping its identity and existing landing releases. Templates use `@param`, `@type`, `@block`, `@each`, `@render`, and `@layout` directives. Active panel users choose a template, configure its generated form, and create a landing with an active website release. Settings can be grouped into sections and nested blocks, including repeatable comments with their own image uploads. A template that is used by at least one landing cannot be deleted; detach those landings from the template or delete them first.
+Administrators can import a single HTML/PHP/TXT/TPL source or a ZIP containing an index or legacy `template.html`, additional pages, source fragments, and assets. On **Templates**, **Edit** changes a template's name and description and optionally replaces its source or ZIP package while keeping its identity and existing landing releases. Templates use `@param`, `@type`, `@block`, `@each`, `@render`, and `@layout` directives. Active panel users choose a template, configure its generated form, and create a landing whose active release is built from the template (a template landing). Settings can be grouped into sections and nested blocks, including repeatable comments with their own image uploads. A template that is used by at least one landing cannot be deleted; detach those landings from the template or delete them first.
 
-On an existing landing, **Edit template data** opens the saved settings and retains uploaded images. **Change template** starts a new form with the selected template's defaults. **Replace with ZIP archive** switches a generated landing to uploaded website content; **Use a template** converts a ZIP landing to a generated one. **Save and activate** creates a new release while preserving the landing's name, slug, publication status, and domains. Each new release stores its template settings, so activating a previous release also restores the matching editor data. Existing installations must run `php artisan migrate` to add these snapshots; only the active release can be backfilled with previously saved settings.
+On an existing landing, **Edit template data** opens the saved settings and retains uploaded images. **Change template** starts a new form with the selected template's defaults. **Replace with ZIP archive** turns a template landing into a file landing with uploaded files; **Use a template** turns a file landing into a template landing. **Save and activate** creates a new release while preserving the landing's name, slug, publication status, and domains. Each new release stores its template settings, so activating a previous release also restores the matching editor data. Existing installations must run `php artisan migrate` to add these snapshots; only the active release can be backfilled with previously saved settings.
 
 See the [template format and authoring guide](docs/templates.md), [single-file example](public/examples/article-template.html), and [ZIP example](public/examples/article-template.zip).
 
