@@ -27,6 +27,12 @@ class LandingRelease extends Model
         ];
     }
 
+    /** A draft is a working copy of the active release only; older releases are activated first. */
+    public function isDraftable(): bool
+    {
+        return $this->is_active;
+    }
+
     public function previewDirectory(): string
     {
         return "{$this->landing_id}/previews/{$this->id}";

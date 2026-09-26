@@ -4,7 +4,7 @@
             <button type="button" class="d-btn d-btn-outline d-btn-sm" x-on:click="download(@js(route('files.download', $workspaceId)))" :disabled="busy">Download ZIP</button>
             <button type="button" class="d-btn d-btn-ghost d-btn-sm" x-on:click="if ((!dirty && !$wire.pendingChanges) || confirm('Discard all file changes?')) run('discard')" :disabled="busy">Cancel</button>
             @if ($info['kind'] === 'landing' && $info['template_linked'])
-                <button type="button" class="d-btn d-btn-warning d-btn-sm" x-on:click="if (confirm('Detach from template? The new release will be a file landing: its content is edited as files and no longer through template values. The previous release keeps its template snapshot and can be activated to restore it.')) run('publish', true)" :disabled="busy || (!dirty && !$wire.pendingChanges)">
+                <button type="button" class="d-btn d-btn-warning d-btn-sm" x-on:click="if (confirm('Detach from template? The new release will be a file landing: its content is edited as files and no longer through template values. The previous release keeps its template snapshot; activate an earlier release to return to the template.')) run('publishDetachingFromTemplate')" :disabled="busy || (!dirty && !$wire.pendingChanges)">
                     Detach from template and activate
                 </button>
             @else
@@ -19,7 +19,7 @@
     <p x-show="error" x-text="error" class="d-alert d-alert-error" role="alert" x-cloak></p>
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-box border border-base-300 bg-base-200/50 px-4 py-3 text-sm">
         <p class="text-base-content/65">
-            {{ $info['kind'] === 'template' ? 'Edit source files and assets, then save the template to validate all changes together.' : 'Changes are saved as a new active release. You can restore the previous release from the landing page.' }}
+            {{ $info['kind'] === 'template' ? 'Edit source files and assets, then save the template to validate all changes together.' : 'Changes are saved as a new active release. You can activate the previous release again from the landing page.' }}
         </p>
         <span class="d-badge d-badge-outline shrink-0" x-text="dirty ? 'Unsaved file' : ($wire.pendingChanges ? 'Unpublished changes' : 'No changes')"></span>
     </div>

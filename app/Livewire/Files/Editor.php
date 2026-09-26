@@ -48,14 +48,15 @@ class Editor extends Component
     public function mount(?LandingTemplate $template = null, ?LandingRelease $release = null): void
     {
         abort_unless(($template?->exists ?? false) xor ($release?->exists ?? false), 404);
-        $target = $template?->exists ? $template : $release;
-        try {
-            $this->workspaceId = $this->workspaces()->open($target, $this->activeUser());
-        } catch (ValidationException $exception) {
+        if ($release?->exists && ! $release->isDraftable()) {
             // Only the active release can be drafted: send the operator back to the landing
-            // with the reason. Livewire would otherwise swallow the exception and render.
-            abort(redirect()->route('landings.show', $release->landing_id)->withErrors($exception->errors()));
+            // with the reason before any draft is opened.
+            abort(redirect()->route('landings.show', $release->landing_id)->withErrors([
+                'release' => __('Activate this release first.'),
+            ]));
         }
+        $target = $template?->exists ? $template : $release;
+        $this->workspaceId = $this->workspaces()->open($target, $this->activeUser());
         $info = $this->info();
         $this->selectFile($info['entrypoint']);
     }
@@ -137,23 +138,41 @@ class Editor extends Component
         }
     }
 
-    /** @param bool $detachFromTemplate Explicit confirmation that a template landing becomes a file landing. */
-    public function publish(bool $detachFromTemplate = false): bool
+    public function publish(): bool
+    {
+        return $this->publishDraft(
+            fn (): LandingTemplate|LandingRelease => $this->workspaces()->publish($this->workspaceId, $this->activeUser()),
+            fn (LandingTemplate|LandingRelease $result): string => $result instanceof LandingTemplate
+                ? 'Template files saved. Existing landing releases are unchanged.'
+                : 'Files saved and a new landing release activated.',
+        );
+    }
+
+    /** Detach from template: the operator confirmed that this template landing becomes a file landing. */
+    public function publishDetachingFromTemplate(): bool
+    {
+        return $this->publishDraft(
+            fn (): LandingRelease => $this->workspaces()->publishDetachingFromTemplate($this->workspaceId, $this->activeUser()),
+            fn (): string => 'Detached from template: a new release was activated and this is now a file landing.',
+        );
+    }
+
+    /**
+     * @param  callable(): (LandingTemplate|LandingRelease)  $publish
+     * @param  callable(LandingTemplate|LandingRelease): string  $message
+     */
+    private function publishDraft(callable $publish, callable $message): bool
     {
         $this->resetValidation();
         try {
-            $result = $this->workspaces()->publish($this->workspaceId, $this->activeUser(), $detachFromTemplate);
+            $result = $publish();
         } catch (ValidationException $exception) {
             $this->setErrorBag($exception->validator->errors());
 
             return false;
         }
         $this->pendingChanges = false;
-        session()->flash('saved', match (true) {
-            $result instanceof LandingTemplate => 'Template files saved. Existing landing releases are unchanged.',
-            $detachFromTemplate => 'Detached from template: a new release was activated and this is now a file landing.',
-            default => 'Files saved and a new landing release activated.',
-        });
+        session()->flash('saved', $message($result));
         $this->redirect($result instanceof LandingTemplate ? route('templates.index') : route('landings.show', $result->landing_id), navigate: true);
         $this->skipRender();
 

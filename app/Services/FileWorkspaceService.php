@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 use Normalizer;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -51,7 +52,7 @@ class FileWorkspaceService
                     $target = LandingRelease::query()->lockForUpdate()->findOrFail($target->id);
                     // A draft is a working copy of the active release only; editing an older
                     // release is done by activating it first.
-                    if (! $target->is_active) {
+                    if (! $target->isDraftable()) {
                         throw ValidationException::withMessages([
                             'release' => __('Activate this release first.'),
                         ]);
@@ -245,12 +246,27 @@ class FileWorkspaceService
     /**
      * Publish a draft as a new release (landing) or a replaced package (template).
      *
-     * Publishing a draft of a template landing detaches the landing from its
-     * template: the new release has no template snapshot, so it becomes a file
-     * landing. That is a named operation the operator confirms explicitly with
-     * $detachFromTemplate; without it a template landing draft is refused.
+     * A draft of a template landing is refused here: publishing it would turn the
+     * landing into a file landing, which is the explicit operation
+     * publishDetachingFromTemplate().
      */
-    public function publish(string $id, User $user, bool $detachFromTemplate = false): LandingTemplate|LandingRelease
+    public function publish(string $id, User $user): LandingTemplate|LandingRelease
+    {
+        return $this->publishDraft($id, $user, detachFromTemplate: false);
+    }
+
+    /** Detach from template: publish a template landing's draft, making it a file landing. */
+    public function publishDetachingFromTemplate(string $id, User $user): LandingRelease
+    {
+        $result = $this->publishDraft($id, $user, detachFromTemplate: true);
+        if (! $result instanceof LandingRelease) {
+            throw new LogicException('Only a landing draft can detach from a template.');
+        }
+
+        return $result;
+    }
+
+    private function publishDraft(string $id, User $user, bool $detachFromTemplate): LandingTemplate|LandingRelease
     {
         return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user, $detachFromTemplate): LandingTemplate|LandingRelease {
             $archive = $this->zip($base);

@@ -166,7 +166,7 @@ class FileEditorTest extends TestCase
         $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
         $this->assertSame($template->id, $landing->fresh()->landing_template_id);
 
-        $editor->call('publish', true)->assertHasNoErrors();
+        $editor->call('publishDetachingFromTemplate')->assertHasNoErrors();
         $this->assertNotSame($release->id, $landing->fresh()->activeRelease->id);
         $this->assertNull($landing->fresh()->landing_template_id);
     }
@@ -206,7 +206,7 @@ class FileEditorTest extends TestCase
         Livewire::test(Editor::class, ['release' => $release])
             ->call('selectFile', 'index.html')
             ->call('saveFile', '<h1>Custom HTML</h1>')
-            ->call('publish', true)
+            ->call('publishDetachingFromTemplate')
             ->assertHasNoErrors();
 
         $landing->refresh();

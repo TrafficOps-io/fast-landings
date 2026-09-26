@@ -129,7 +129,7 @@ class FileWorkspaceServiceTest extends TestCase
         $this->assertDatabaseCount('landing_releases', 1);
         $this->assertSame('<h1>Hand edited</h1>', $this->files->read($id, 'index.html', $this->user), 'The draft survives the refused publish.');
 
-        $published = $this->files->publish($id, $this->user, detachFromTemplate: true);
+        $published = $this->files->publishDetachingFromTemplate($id, $this->user);
         $this->assertNull($published->landing_template_id);
         $this->assertNull($landing->fresh()->landing_template_id);
     }
@@ -152,7 +152,7 @@ class FileWorkspaceServiceTest extends TestCase
         $id = $this->files->open($previous, $this->user);
         $this->assertTrue($this->files->info($id, $this->user)['template_linked']);
         $this->files->write($id, 'index.html', '<h1>Hand edited</h1>', $this->user);
-        $published = $this->files->publish($id, $this->user, detachFromTemplate: true);
+        $published = $this->files->publishDetachingFromTemplate($id, $this->user);
 
         $this->assertNull($published->landing_template_id);
         $this->assertNull($published->template_values);
