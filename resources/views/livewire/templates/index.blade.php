@@ -117,7 +117,7 @@
                                     @if ($canManageTemplates)
                                         <a href="{{ route('templates.files', $template) }}" class="d-btn d-btn-outline d-btn-sm" wire:navigate>Files</a>
                                         <button type="button" class="d-btn d-btn-ghost d-btn-sm" wire:click="editTemplate(@js($template->id))" wire:loading.attr="disabled" wire:target="replacementUpload,saveTemplate,editTemplate">Edit</button>
-                                        <button type="button" class="d-btn d-btn-ghost d-btn-sm text-error" wire:click="deleteTemplate(@js($template->id))" wire:confirm="Delete this template? Existing landings will remain available." wire:loading.attr="disabled" wire:target="deleteTemplate">Delete</button>
+                                        <button type="button" class="d-btn d-btn-ghost d-btn-sm text-error" wire:click="deleteTemplate(@js($template->id))" wire:confirm="Delete this template? A template that is still used by a landing cannot be deleted." wire:loading.attr="disabled" wire:target="deleteTemplate">Delete</button>
                                     @endif
                                 </div>
                             </div>

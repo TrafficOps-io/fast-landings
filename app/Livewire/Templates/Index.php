@@ -112,7 +112,7 @@ class Index extends Component
             $this->cancelEdit();
         }
 
-        session()->flash('saved', 'Template deleted. Landings already created from it are unchanged.');
+        session()->flash('saved', 'Template deleted.');
     }
 
     public function render()

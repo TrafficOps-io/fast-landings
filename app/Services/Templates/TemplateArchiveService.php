@@ -232,6 +232,17 @@ class TemplateArchiveService
         abort_unless(auth()->user()?->is_active && auth()->user()?->isAdministrator(), 403);
         $storagePath = DB::transaction(function () use ($template): string {
             $template = LandingTemplate::query()->lockForUpdate()->findOrFail($template->id);
+            // A template used by at least one landing cannot be deleted: the landing would
+            // lose its template editor. Detach or delete those landings first.
+            $landingNames = $template->landings()->orderBy('name')->pluck('name');
+            if ($landingNames->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'template' => __('This template is used by :count landing(s) and cannot be deleted: :names. Detach them from the template or delete them first.', [
+                        'count' => $landingNames->count(),
+                        'names' => $landingNames->implode(', '),
+                    ]),
+                ]);
+            }
             $template->delete();
 
             return $template->storage_path;
