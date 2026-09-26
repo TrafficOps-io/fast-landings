@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Serving depends on the domain having been verified, not on the last check
@@ -8,9 +8,13 @@ A landing is served on a domain while the domain is verified (it has been
 Active at least once), is not Drifted, and the landing is Published. Transient
 check outcomes (Unreachable from a resolver timeout, Error from a failed worker)
 must not take a live site offline, and a wildcard base failing transiently must
-not take down its child domains. The current code gates serving on
-`status = active` only; this decision changes that. Only Drifted, which means
-DNS really no longer points at the origin target, stops serving.
+not take down its child domains. Serving is gated on the domain's `verified_at`
+marker (set on its first Active status, never cleared) and on the domain not
+being Drifted; the latest check status otherwise plays no part. Only Drifted,
+which means DNS really no longer points at the origin target, stops serving.
+Drift is itself derived from verification: DNS that no longer matches is
+Drifted for a verified domain and still Pending propagation for one that was
+never verified.
 
 ## Considered options
 
