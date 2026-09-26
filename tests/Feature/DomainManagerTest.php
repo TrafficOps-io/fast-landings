@@ -962,18 +962,49 @@ class DomainManagerTest extends TestCase
         $this->cloudflare->shouldNotHaveReceived('removeDomain');
     }
 
-    public function test_remove_delegates_safe_managed_record_cleanup_for_cloudflare(): void
+    public function test_remove_keeps_cloudflare_managed_records_unless_cleanup_is_requested(): void
+    {
+        $domain = $this->cloudflareDomain('keep.example.com');
+
+        $this->cloudflare->shouldReceive('removeDomain')
+            ->once()
+            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
+                && $id === $domain->cloudflare_domain_id
+                && ! $cleanup);
+
+        $this->manager->remove($domain);
+
+        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
+    }
+
+    public function test_remove_delegates_safe_managed_record_cleanup_for_cloudflare_when_explicitly_requested(): void
+    {
+        $domain = $this->cloudflareDomain('remove.example.com');
+
+        $this->cloudflare->shouldReceive('removeDomain')
+            ->once()
+            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
+                && $id === $domain->cloudflare_domain_id
+                && $cleanup);
+
+        $this->manager->remove($domain, cleanupManagedRecords: true);
+
+        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
+    }
+
+    private function cloudflareDomain(string $hostname): Domain
     {
         [, $zoneId] = $this->cloudflareTree();
         $remote = CloudflareDomain::query()->create([
             'zone_id' => $zoneId,
-            'hostname' => 'remove.example.com',
+            'hostname' => $hostname,
             'kind' => 'exact',
             'status' => CloudflareDomainStatus::Active,
         ]);
-        $domain = Domain::query()->create([
+
+        return Domain::query()->create([
             'landing_id' => $this->landing('Cloudflare removal')->getKey(),
-            'hostname' => 'remove.example.com',
+            'hostname' => $hostname,
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Cloudflare,
             'status' => DomainStatus::Active,
@@ -981,16 +1012,6 @@ class DomainManagerTest extends TestCase
             'dns_target' => 'origin.landings.test',
             'cloudflare_domain_id' => $remote->getKey(),
         ]);
-
-        $this->cloudflare->shouldReceive('removeDomain')
-            ->once()
-            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
-                && $id === $remote->getKey()
-                && $cleanup);
-
-        $this->manager->remove($domain);
-
-        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
     }
 
     public function test_partial_cloudflare_cleanup_failure_keeps_the_binding_retryable_without_claiming_active_dns(): void

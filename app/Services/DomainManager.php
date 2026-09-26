@@ -560,10 +560,11 @@ class DomainManager
     }
 
     /**
-     * Remove a local hostname and, when requested, only DNS records that the
-     * Cloudflare package itself created. Adopted records are never deleted.
+     * Remove a domain from the panel. Managed DNS records are kept unless the
+     * operator explicitly asks for cleanup, and even then only records that the
+     * Cloudflare package itself created are deleted; adopted records never are.
      */
-    public function remove(Domain $domain, bool $cleanupManagedRecords = true): void
+    public function remove(Domain $domain, bool $cleanupManagedRecords = false): void
     {
         $domain = Domain::query()
             ->with('cloudflareDomain.zone.account.integration')
