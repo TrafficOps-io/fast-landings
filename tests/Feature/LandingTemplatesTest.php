@@ -513,7 +513,10 @@ TPL,
 
         Livewire::test(Index::class)
             ->call('deleteTemplate', $template->id)
-            ->assertHasErrors('template');
+            ->assertHasErrors('template')
+            ->assertSee('cannot be deleted')
+            ->assertSee('Generated article')
+            ->assertSee('Second article');
 
         $this->assertDatabaseHas('landing_templates', ['id' => $template->id]);
         $this->assertSame($template->id, $first->fresh()->landing_template_id);
