@@ -375,6 +375,7 @@ class LandingContentControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => $status,
+            'verified_at' => $status === DomainStatus::Active ? now() : null,
             'is_primary' => true,
             'dns_target' => 'origin.fast-landings.test',
         ]);

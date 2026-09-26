@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use TrafficOps\Cloudflare\Models\CloudflareDomain;
 use TrafficOps\Cloudflare\Support\ModelResolver;
 
@@ -34,15 +35,31 @@ class Domain extends Model
         ];
     }
 
-    protected static function booted(): void
+    /**
+     * The single write path for a domain status. A domain is verified once it has
+     * been Active at least once: the first Active status records `verified_at`,
+     * which is never cleared (ADR-0003). Every status write, including bulk ones,
+     * must go through here so the marker cannot be skipped.
+     *
+     * @param  Builder<self>|Relation<self, *, *>  $domains  The rows to transition.
+     * @param  array<string, mixed>  $attributes  Further columns written alongside the status.
+     * @return int Number of rows transitioned.
+     */
+    public static function transition(Builder|Relation $domains, DomainStatus $status, array $attributes = []): int
     {
-        // A domain is verified once it has been Active at least once. The marker
-        // is recorded on the first Active status and never cleared (ADR-0003).
-        static::saving(function (self $domain): void {
-            if ($domain->status === DomainStatus::Active && $domain->verified_at === null) {
-                $domain->verified_at = now();
-            }
-        });
+        if ($status === DomainStatus::Active) {
+            (clone $domains)->whereNull('verified_at')->update(['verified_at' => now()]);
+        }
+
+        return $domains->update(['status' => $status, ...$attributes]);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function transitionTo(DomainStatus $status, array $attributes = []): static
+    {
+        static::transition(static::query()->whereKey($this->getKey()), $status, $attributes);
+
+        return $this->refresh();
     }
 
     /**
@@ -55,8 +72,8 @@ class Domain extends Model
     public function scopeServable(Builder $query): Builder
     {
         return $query
-            ->whereNotNull('verified_at')
-            ->where('status', '!=', DomainStatus::Drifted)
+            ->whereNotNull($query->qualifyColumn('verified_at'))
+            ->where($query->qualifyColumn('status'), '!=', DomainStatus::Drifted)
             ->whereHas('landing', fn (Builder $landing) => $landing
                 ->where('is_active', true)
                 ->whereHas('releases', fn (Builder $releases) => $releases->where('is_active', true)));

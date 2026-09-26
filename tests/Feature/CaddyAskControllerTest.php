@@ -29,6 +29,7 @@ class CaddyAskControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => DomainStatus::Active,
+            'verified_at' => now(),
             'is_primary' => true,
             'dns_target' => 'origin.fast-landings.test',
         ]);
@@ -152,6 +153,7 @@ class CaddyAskControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => $status,
+            'verified_at' => $status === DomainStatus::Active ? now() : null,
             'is_primary' => $landing !== null,
             'dns_target' => 'origin.fast-landings.test',
         ]);

@@ -8,6 +8,7 @@ use App\Enums\DomainStatus;
 use App\Models\Domain;
 use App\Models\Installation;
 use App\Models\Landing;
+use App\Models\LandingRelease;
 use App\Services\DomainManager;
 use Closure;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
@@ -567,6 +568,55 @@ class DomainManagerTest extends TestCase
         $this->assertTrue($verifiedAt->equalTo($drifted->verified_at), 'Verification is recorded once and never cleared.');
     }
 
+    public function test_verified_domain_that_loses_dns_after_a_transient_failure_is_drifted_and_not_served(): void
+    {
+        $domain = $this->manager->createManual($this->publishedLanding('Steady'), 'promo.example.com');
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($domain);
+        $this->assertTrue($this->isServed($domain));
+
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+        try {
+            $this->manager->checkManual($domain);
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+        $this->assertTrue($this->isServed($domain), 'A transient failure does not stop serving.');
+
+        $this->resolver->onResolve = null;
+        $this->resolver->answers['promo.example.com:CNAME'] = [];
+        $this->assertSame(DomainStatus::Drifted, $this->manager->checkManual($domain)->status, 'Drift is derived from verification, not from the previous status.');
+        $this->assertFalse($this->isServed($domain));
+    }
+
+    public function test_verified_child_domain_that_loses_dns_after_the_base_failed_transiently_is_drifted(): void
+    {
+        $base = $this->manager->createManual(null, 'example.com', wildcard: true);
+        $child = $this->manager->createSubdomain($base, $this->publishedLanding('Offer'), 'offer');
+        $probe = Hostname::wildcardProbe('*.example.com', $base->id);
+        $this->resolver->answers['example.com:CNAME'] = ['origin.landings.test'];
+        $this->resolver->answers[$probe.':CNAME'] = ['origin.landings.test'];
+        $this->resolver->answers['offer.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($base);
+        $this->assertSame(DomainStatus::Active, $this->manager->checkDns($child)->status);
+        $this->assertNotNull($child->refresh()->verified_at, 'A child verified by its own check records verified_at.');
+        $this->assertTrue($this->isServed($child));
+
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+        try {
+            $this->manager->checkManual($base);
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(DomainStatus::Unreachable, $child->refresh()->status, 'The base failure is copied onto its children.');
+        $this->assertTrue($this->isServed($child));
+
+        $this->resolver->onResolve = null;
+        $this->manager->checkManual($base);
+        $this->resolver->answers['offer.example.com:CNAME'] = ['elsewhere.example.net'];
+        $this->assertSame(DomainStatus::Drifted, $this->manager->checkDns($child)->status);
+        $this->assertFalse($this->isServed($child));
+    }
+
     public function test_verified_domain_stays_verified_through_an_unreachable_check(): void
     {
         $domain = $this->manager->createManual($this->landing('Manual'), 'promo.example.com');
@@ -1061,6 +1111,30 @@ class DomainManagerTest extends TestCase
             'description' => null,
             'is_active' => true,
         ]);
+    }
+
+    /** A published landing with an active release, i.e. one that can be served. */
+    private function publishedLanding(string $name): Landing
+    {
+        $landing = $this->landing($name);
+        LandingRelease::query()->create([
+            'landing_id' => $landing->id,
+            'original_name' => 'landing.zip',
+            'storage_path' => $landing->id.'/releases/'.Str::ulid(),
+            'entrypoint' => 'index.html',
+            'size_bytes' => 1,
+            'file_count' => 1,
+            'checksum' => str_repeat('a', 64),
+            'is_active' => true,
+            'activated_at' => now(),
+        ]);
+
+        return $landing;
+    }
+
+    private function isServed(Domain $domain): bool
+    {
+        return Domain::query()->servable()->whereKey($domain->getKey())->exists();
     }
 
     /** @return array{string, string} */

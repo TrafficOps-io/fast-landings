@@ -58,6 +58,8 @@ class DomainManager
             'kind' => DomainKind::System,
             'provider' => DomainProvider::System,
             'status' => DomainStatus::Active,
+            // System subdomains are trusted unconditionally: Active, hence verified, at creation.
+            'verified_at' => now(),
             'dns_target' => $this->normalizeTarget($installation->origin_target),
             'last_checked_at' => now(),
             'last_error' => null,
@@ -349,13 +351,10 @@ class DomainManager
             throw new LogicException('The subdomain has no connected wildcard DNS source.');
         }
         if ($base->status !== DomainStatus::Active) {
-            $domain->update([
-                'status' => $base->status,
+            return $domain->transitionTo($base->status, [
                 'last_checked_at' => now(),
                 'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
             ]);
-
-            return $domain->refresh();
         }
 
         try {
@@ -385,13 +384,10 @@ class DomainManager
             // the earlier active snapshot used to start this child check.
             $base = Domain::query()->lockForUpdate()->findOrFail($base->getKey());
             if ($base->status !== DomainStatus::Active) {
-                $domain->update([
-                    'status' => $base->status,
+                return $domain->transitionTo($base->status, [
                     'last_checked_at' => now(),
                     'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
                 ]);
-
-                return $domain->refresh();
             }
 
             return $this->applyDnsResults($domain, [$result]);
@@ -402,23 +398,24 @@ class DomainManager
     private function applyDnsResults(Domain $domain, array $results): Domain
     {
         $result = collect($results)->first(fn (array $result): bool => $result['status'] !== 'matched') ?? $results[0];
+        // DNS that no longer points at the origin target is Drifted only for a
+        // verified domain; a never-verified domain is still propagating. Deriving
+        // this from verification (not from the previous status) means a transient
+        // Unreachable/Error between two checks cannot hide a real drift (ADR-0003).
         $status = match ($result['status']) {
             'matched' => DomainStatus::Active,
-            'missing', 'mismatched' => in_array($domain->status, [DomainStatus::Active, DomainStatus::Drifted], true)
+            'missing', 'mismatched' => $domain->verified_at !== null
                 ? DomainStatus::Drifted
                 : DomainStatus::PendingPropagation,
             default => DomainStatus::PendingPropagation,
         };
 
-        $domain->update([
-            'status' => $status,
+        return $domain->transitionTo($status, [
             'last_checked_at' => now(),
             'last_error' => $status === DomainStatus::Active
                 ? null
                 : "Public DNS is {$result['status']} for [{$result['name']}].",
         ]);
-
-        return $domain->refresh();
     }
 
     /** Alias matching the provider name used by the UI and database. */
@@ -462,8 +459,7 @@ class DomainManager
             return;
         }
 
-        $base->subdomains()->update([
-            'status' => $base->status,
+        Domain::transition($base->subdomains(), $base->status, [
             'last_checked_at' => $base->last_checked_at,
             'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
         ]);
@@ -483,11 +479,7 @@ class DomainManager
                 ),
             );
 
-            $domain->update([
-                'status' => DomainStatus::Pending,
-                'last_error' => null,
-            ]);
-            $this->refreshSubdomains($domain->refresh());
+            $this->refreshSubdomains($domain->transitionTo(DomainStatus::Pending, ['last_error' => null]));
 
             return $result;
         } catch (Throwable $exception) {
@@ -853,20 +845,16 @@ class DomainManager
 
         DB::transaction(function () use ($result, $integrationId, $returnedIds): void {
             foreach ($result->domains as $remote) {
-                // Saved through the model so a first Active status records verified_at.
-                Domain::query()->where('cloudflare_domain_id', $remote->id)->get()->each->update([
-                    'status' => $this->mapCloudflareStatus($remote->status),
+                Domain::transition(Domain::query()->where('cloudflare_domain_id', $remote->id), $this->mapCloudflareStatus($remote->status), [
                     'last_checked_at' => $remote->lastCheckedAt ?? now(),
                     'last_error' => null,
                 ]);
             }
 
-            Domain::query()
+            Domain::transition(Domain::query()
                 ->where('provider', DomainProvider::Cloudflare)
                 ->whereHas('cloudflareDomain.zone.account', fn ($query) => $query->where('integration_id', $integrationId))
-                ->whereNotIn('cloudflare_domain_id', $returnedIds)
-                ->update([
-                    'status' => DomainStatus::Error,
+                ->whereNotIn('cloudflare_domain_id', $returnedIds), DomainStatus::Error, [
                     'last_checked_at' => now(),
                     'last_error' => 'The Cloudflare domain is missing from its integration check.',
                 ]);
@@ -899,12 +887,10 @@ class DomainManager
 
     private function markFailure(Domain $domain, DomainStatus $status, Throwable $exception): void
     {
-        Domain::query()->whereKey($domain->getKey())->update([
-            'status' => $status,
+        $this->refreshSubdomains($domain->transitionTo($status, [
             'last_checked_at' => now(),
             'last_error' => DomainError::message($exception),
-        ]);
-        $this->refreshSubdomains($domain->refresh());
+        ]));
     }
 
     private function withCloudflareLock(string $integrationId, Closure $callback): mixed
