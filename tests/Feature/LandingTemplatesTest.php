@@ -530,7 +530,7 @@ TPL,
         $landing = $this->createLanding($template);
         $release = $landing->activeRelease;
         // Replacing the template landing's content with a ZIP makes it a file landing.
-        app(LandingArchiveService::class)->deploy($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
+        app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
         $this->assertNull($landing->fresh()->landing_template_id);
 
         Livewire::test(Index::class)
@@ -673,9 +673,17 @@ TPL,
         $landing = $this->createLanding($template);
         $generated = $landing->activeRelease;
 
-        Livewire::test(Show::class, ['landing' => $landing])
+        $show = Livewire::test(Show::class, ['landing' => $landing])
             ->assertSee('Edit template data')->assertSee('Change template')->assertSee('Replace with ZIP archive')
-            ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => '<h1>ZIP content</h1>'])->getContent()))
+            ->assertSee('Detach from template')
+            ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => '<h1>ZIP content</h1>'])->getContent()));
+
+        // A template landing is not detached silently: the ZIP deploy needs the explicit confirmation.
+        $show->call('deploy')->assertHasErrors('detachFromTemplate');
+        $this->assertSame($generated->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+
+        $show->set('detachFromTemplate', true)
             ->call('deploy')->assertHasNoErrors()->assertSee('Use a template')->assertDontSee('Edit template data');
 
         $landing->refresh();
@@ -753,6 +761,7 @@ TPL,
         $component->call('save')->assertHasErrors('template');
         Livewire::test(Show::class, ['landing' => $landing])
             ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => 'Too large'])->getContent()))
+            ->set('detachFromTemplate', true)
             ->call('deploy')->assertHasErrors('archive');
 
         $this->assertSame($previous->id, $landing->fresh()->activeRelease->id);
@@ -781,7 +790,7 @@ TPL,
         $template = $this->import($this->definitionFile());
         $landing = $this->createLanding($template);
         $component = Livewire::test(EditTemplate::class, ['landing' => $landing]);
-        $zip = app(LandingArchiveService::class)->deploy($landing, $this->zip(['index.html' => 'New version']), $this->administrator);
+        $zip = app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => 'New version']), $this->administrator);
 
         $component->set('values.title', 'Stale edit')->call('save')->assertHasErrors('template');
         $this->assertSame($zip->id, $landing->fresh()->activeRelease->id);
@@ -797,7 +806,7 @@ TPL,
         $previous = $landing->activeRelease;
         // The landing must stop using the template before the template can be deleted;
         // activating the older release afterwards restores a snapshot of a deleted template.
-        app(LandingArchiveService::class)->deploy($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
+        app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
         app(TemplateArchiveService::class)->delete($template);
         app(LandingArchiveService::class)->activate($landing->fresh(), $previous);
         $landing->refresh();

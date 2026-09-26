@@ -162,7 +162,7 @@ class FileEditorTest extends TestCase
             ->call('selectFile', 'index.html')
             ->call('saveFile', '<h1>Custom HTML</h1>');
 
-        $editor->call('publish')->assertHasErrors('publish');
+        $editor->call('publish')->assertHasErrors('detachFromTemplate');
         $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
         $this->assertSame($template->id, $landing->fresh()->landing_template_id);
 

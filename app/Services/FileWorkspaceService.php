@@ -253,11 +253,6 @@ class FileWorkspaceService
     public function publish(string $id, User $user, bool $detachFromTemplate = false): LandingTemplate|LandingRelease
     {
         return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user, $detachFromTemplate): LandingTemplate|LandingRelease {
-            if ($metadata['kind'] === 'landing' && ($metadata['template_linked'] ?? false) && ! $detachFromTemplate) {
-                throw ValidationException::withMessages([
-                    'publish' => __('This is a template landing. Publishing edited files detaches it from its template; confirm "Detach from template" to continue.'),
-                ]);
-            }
             $archive = $this->zip($base);
             try {
                 $file = new UploadedFile($archive, $metadata['kind'].'-files.zip', 'application/zip', null, true);
@@ -267,10 +262,13 @@ class FileWorkspaceService
                         'name' => $template->name, 'description' => $template->description,
                     ], $file, $user, $metadata['revision'], trustedWorkspaceArchive: true);
                 } else {
-                    // Detach from template: directly edited output becomes a release without a template
-                    // snapshot. The previous release keeps its snapshot, so activating it restores the template.
+                    // Edited files become a release without a template snapshot. LandingArchiveService
+                    // refuses that for a template landing unless the operator detaches explicitly.
                     $landing = Landing::query()->findOrFail($metadata['landing_id']);
-                    $result = app(LandingArchiveService::class)->deploy($landing, $file, $user, expectedActiveReleaseId: $metadata['revision']);
+                    $archives = app(LandingArchiveService::class);
+                    $result = $detachFromTemplate
+                        ? $archives->deployDetachingFromTemplate($landing, $file, $user, expectedActiveReleaseId: $metadata['revision'])
+                        : $archives->deploy($landing, $file, $user, expectedActiveReleaseId: $metadata['revision']);
                 }
                 Storage::disk(config('fast-landings.storage_disk'))->deleteDirectory($base);
 
