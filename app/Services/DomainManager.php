@@ -65,10 +65,8 @@ class DomainManager
     }
 
     /**
-     * Create a custom domain whose DNS is managed by the administrator.
-     *
-     * `verification_token` is deliberately left unused: an A, AAAA, or CNAME
-     * pointing to the installation origin proves control of the domain's DNS.
+     * Create a custom domain whose DNS is managed by the administrator. An A,
+     * AAAA, or CNAME pointing to the origin target proves control of the domain.
      */
     public function createManual(
         ?Landing $landing,
@@ -91,7 +89,6 @@ class DomainManager
             'provider' => DomainProvider::Dns,
             'status' => DomainStatus::Pending,
             'dns_target' => $target,
-            'verification_token' => null,
             'cloudflare_domain_id' => null,
             'last_checked_at' => null,
             'last_error' => null,
@@ -189,7 +186,6 @@ class DomainManager
                     'provider' => DomainProvider::Cloudflare,
                     'status' => DomainStatus::Pending,
                     'dns_target' => $target,
-                    'verification_token' => null,
                     'cloudflare_domain_id' => null,
                     'last_checked_at' => null,
                     'last_error' => null,
@@ -242,7 +238,6 @@ class DomainManager
                 'provider' => $base->provider,
                 'status' => DomainStatus::Pending,
                 'dns_target' => $base->dns_target,
-                'verification_token' => null,
                 'cloudflare_domain_id' => null,
                 'last_checked_at' => null,
                 'last_error' => null,
