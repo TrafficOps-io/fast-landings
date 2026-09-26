@@ -26,6 +26,10 @@ class FileWorkspaceService
 
     public function __construct(private ArchiveExtractor $extractor) {}
 
+    /**
+     * Open a draft: a private working copy of a template's package or of a
+     * landing's active release. A non-active release is refused.
+     */
     public function open(LandingTemplate|LandingRelease $target, User $user): string
     {
         $user = $this->authorize($user, $target instanceof LandingTemplate);
@@ -45,6 +49,13 @@ class FileWorkspaceService
                 } else {
                     $landing = Landing::query()->lockForUpdate()->findOrFail($target->landing_id);
                     $target = LandingRelease::query()->lockForUpdate()->findOrFail($target->id);
+                    // A draft is a working copy of the active release only; editing an older
+                    // release is done by activating it first.
+                    if (! $target->is_active) {
+                        throw ValidationException::withMessages([
+                            'release' => __('Activate this release first.'),
+                        ]);
+                    }
                     $metadata = [
                         'kind' => 'landing', 'target_id' => $target->id, 'landing_id' => $landing->id,
                         'name' => $landing->name, 'revision' => (string) $landing->activeRelease?->id,

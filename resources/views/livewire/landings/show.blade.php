@@ -55,8 +55,10 @@
                                 <td><x-ui::status-badge :label="$release->is_active ? 'Active' : 'Inactive'" :tone="$release->is_active ? 'success' : 'neutral'" /></td>
                                 <td class="text-right">
                                     <a href="{{ route('landings.download', ['release' => $release]) }}" class="d-btn d-btn-ghost d-btn-xs" aria-label="Download ZIP for {{ $release->original_name }}" download>Download ZIP</a>
-                                    <a href="{{ route('landings.files', $release) }}" class="d-btn d-btn-ghost d-btn-xs" wire:navigate>Files</a>
-                                    @if (! $release->is_active)
+                                    @if ($release->is_active)
+                                        <a href="{{ route('landings.files', $release) }}" class="d-btn d-btn-ghost d-btn-xs" wire:navigate>Files</a>
+                                    @else
+                                        <span class="d-btn d-btn-ghost d-btn-xs d-btn-disabled" aria-disabled="true" title="Activate this release first to edit its files">Files</span>
                                         <button class="d-btn d-btn-ghost d-btn-xs" wire:click="activate('{{ $release->id }}')">Activate</button>
                                         <button class="d-btn d-btn-ghost d-btn-xs text-error" wire:click="deleteRelease('{{ $release->id }}')" wire:confirm="Delete this release permanently?">Delete</button>
                                     @endif

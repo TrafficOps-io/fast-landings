@@ -269,16 +269,17 @@ class FileWorkspaceServiceTest extends TestCase
         $this->assertSame('Original', $this->files->read($second, 'index.html', $this->user));
     }
 
-    public function test_editing_an_old_release_tracks_the_active_release_at_open(): void
+    public function test_draft_is_opened_from_the_active_release_only(): void
     {
         $old = $this->release();
-        $replacement = app(LandingArchiveService::class)->deploy($old->landing, $this->zip(['index.html' => 'Current']), $this->user);
-        $id = $this->files->open($old, $this->user);
-        $this->assertSame($replacement->id, $this->files->info($id, $this->user)['revision']);
-        $this->assertSame('Original', $this->files->read($id, 'index.html', $this->user));
-        $result = $this->files->publish($id, $this->user);
-        $this->assertTrue($result->is_active);
-        $this->assertFalse($replacement->fresh()->is_active);
+        $active = app(LandingArchiveService::class)->deploy($old->landing, $this->zip(['index.html' => 'Current']), $this->user);
+
+        $this->validation(fn () => $this->files->open($old, $this->user), 'Activate this release first');
+        $this->assertSame([], Storage::disk('landings')->allFiles('_file_editor'), 'No draft is left behind for a refused release.');
+
+        $id = $this->files->open($active, $this->user);
+        $this->assertSame($active->id, $this->files->info($id, $this->user)['revision']);
+        $this->assertSame('Current', $this->files->read($id, 'index.html', $this->user));
     }
 
     public function test_missing_landing_entrypoint_cannot_be_published(): void

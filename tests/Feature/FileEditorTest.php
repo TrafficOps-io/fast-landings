@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Livewire\Files\Editor;
+use App\Livewire\Landings\Show;
 use App\Models\Landing;
 use App\Models\LandingRelease;
 use App\Models\LandingTemplate;
@@ -168,6 +169,23 @@ class FileEditorTest extends TestCase
         $editor->call('publish', true)->assertHasNoErrors();
         $this->assertNotSame($release->id, $landing->fresh()->activeRelease->id);
         $this->assertNull($landing->fresh()->landing_template_id);
+    }
+
+    public function test_files_of_an_inactive_release_cannot_be_drafted_until_it_is_activated(): void
+    {
+        $old = $this->release();
+        $landing = $old->landing;
+        $active = app(LandingArchiveService::class)->deploy($landing, $this->archive(['index.html' => '<h1>Current</h1>']), $this->administrator);
+
+        $this->get(route('landings.files', $old))
+            ->assertRedirect(route('landings.show', $landing))
+            ->assertSessionHasErrors(['release' => 'Activate this release first.']);
+        $this->assertDatabaseCount('landing_releases', 2);
+
+        Livewire::test(Show::class, ['landing' => $landing])
+            ->assertSee('Activate this release first')
+            ->assertSeeHtml(route('landings.files', $active))
+            ->assertDontSeeHtml(route('landings.files', $old));
     }
 
     public function test_file_landing_editor_does_not_mention_detaching(): void

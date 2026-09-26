@@ -49,7 +49,13 @@ class Editor extends Component
     {
         abort_unless(($template?->exists ?? false) xor ($release?->exists ?? false), 404);
         $target = $template?->exists ? $template : $release;
-        $this->workspaceId = $this->workspaces()->open($target, $this->activeUser());
+        try {
+            $this->workspaceId = $this->workspaces()->open($target, $this->activeUser());
+        } catch (ValidationException $exception) {
+            // Only the active release can be drafted: send the operator back to the landing
+            // with the reason. Livewire would otherwise swallow the exception and render.
+            abort(redirect()->route('landings.show', $release->landing_id)->withErrors($exception->errors()));
+        }
         $info = $this->info();
         $this->selectFile($info['entrypoint']);
     }
