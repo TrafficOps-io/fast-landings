@@ -231,9 +231,22 @@ class FileWorkspaceService
         return $this->withWorkspace($id, $user, fn (string $base): string => $this->zip($base));
     }
 
-    public function publish(string $id, User $user): LandingTemplate|LandingRelease
+    /**
+     * Publish a draft as a new release (landing) or a replaced package (template).
+     *
+     * Publishing a draft of a template landing detaches the landing from its
+     * template: the new release has no template snapshot, so it becomes a file
+     * landing. That is a named operation the operator confirms explicitly with
+     * $detachFromTemplate; without it a template landing draft is refused.
+     */
+    public function publish(string $id, User $user, bool $detachFromTemplate = false): LandingTemplate|LandingRelease
     {
-        return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user): LandingTemplate|LandingRelease {
+        return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user, $detachFromTemplate): LandingTemplate|LandingRelease {
+            if ($metadata['kind'] === 'landing' && ($metadata['template_linked'] ?? false) && ! $detachFromTemplate) {
+                throw ValidationException::withMessages([
+                    'publish' => __('This is a template landing. Publishing edited files detaches it from its template; confirm "Detach from template" to continue.'),
+                ]);
+            }
             $archive = $this->zip($base);
             try {
                 $file = new UploadedFile($archive, $metadata['kind'].'-files.zip', 'application/zip', null, true);
@@ -243,8 +256,8 @@ class FileWorkspaceService
                         'name' => $template->name, 'description' => $template->description,
                     ], $file, $user, $metadata['revision'], trustedWorkspaceArchive: true);
                 } else {
-                    // Directly edited output becomes an independent release. The previous release keeps
-                    // its template snapshot, so activating it can still restore the form editor.
+                    // Detach from template: directly edited output becomes a release without a template
+                    // snapshot. The previous release keeps its snapshot, so activating it restores the template.
                     $landing = Landing::query()->findOrFail($metadata['landing_id']);
                     $result = app(LandingArchiveService::class)->deploy($landing, $file, $user, expectedActiveReleaseId: $metadata['revision']);
                 }

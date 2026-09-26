@@ -148,7 +148,36 @@ class FileEditorTest extends TestCase
         $this->assertDatabaseCount('landing_releases', 1);
     }
 
-    public function test_raw_landing_edits_clear_the_visual_template_snapshot_only_on_the_new_release(): void
+    public function test_template_landing_editor_warns_that_publishing_detaches_from_template(): void
+    {
+        $template = $this->template();
+        $landing = app(TemplateLandingService::class)->create($template, [
+            'name' => 'Template landing', 'slug' => 'template-landing',
+        ], ['title' => 'Snapshot title'], [], $this->administrator);
+        $release = $landing->activeRelease;
+
+        $editor = Livewire::test(Editor::class, ['release' => $release])
+            ->assertSee('Detach from template')
+            ->call('selectFile', 'index.html')
+            ->call('saveFile', '<h1>Custom HTML</h1>');
+
+        $editor->call('publish')->assertHasErrors('publish');
+        $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+
+        $editor->call('publish', true)->assertHasNoErrors();
+        $this->assertNotSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertNull($landing->fresh()->landing_template_id);
+    }
+
+    public function test_file_landing_editor_does_not_mention_detaching(): void
+    {
+        Livewire::test(Editor::class, ['release' => $this->release()])
+            ->assertDontSee('Detach from template')
+            ->assertSee('Save and activate');
+    }
+
+    public function test_detach_from_template_clears_the_template_snapshot_only_on_the_new_release(): void
     {
         $template = $this->template();
         $landing = app(TemplateLandingService::class)->create($template, [
@@ -159,7 +188,7 @@ class FileEditorTest extends TestCase
         Livewire::test(Editor::class, ['release' => $release])
             ->call('selectFile', 'index.html')
             ->call('saveFile', '<h1>Custom HTML</h1>')
-            ->call('publish')
+            ->call('publish', true)
             ->assertHasNoErrors();
 
         $landing->refresh();

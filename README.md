@@ -189,7 +189,7 @@ Open **Files** on a template (administrators only), **Edit files** on a landing,
 
 Changes remain in a private draft until **Save template** or **Save and activate**. Switching files automatically stages the current text; Ctrl/Cmd+S stages it explicitly. Update references when moving or deleting a file, then publish all related changes together. Templates are parsed and validated before replacement; a landing must retain root `index.php` or `index.html`. Invalid packages and stale editors leave the current published version untouched. Downloads include staged draft changes. Cancel discards the draft; abandoned drafts expire with staging cleanup.
 
-Landing file edits always create a new active website release, preserving domains and older releases for rollback. Editing a generated landing's files converts the new release to file-managed content; its previous release retains the original template settings. Template file edits affect future generation and leave existing landing releases unchanged. Source previews are served as sandboxed plain text; raster images can be previewed inline.
+Landing file edits always create a new active release, preserving domains and older releases for rollback. Editing a template landing's files is a **Detach from template**: the editor warns about it and asks for explicit confirmation, and the new release becomes a file landing; its previous release retains the original template snapshot, so activating it returns to the template. Template file edits affect future generation and leave existing landing releases unchanged. Source previews are served as sandboxed plain text; raster images can be previewed inline.
 
 ## Local development
 

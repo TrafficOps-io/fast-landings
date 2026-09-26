@@ -131,20 +131,23 @@ class Editor extends Component
         }
     }
 
-    public function publish(): bool
+    /** @param bool $detachFromTemplate Explicit confirmation that a template landing becomes a file landing. */
+    public function publish(bool $detachFromTemplate = false): bool
     {
         $this->resetValidation();
         try {
-            $result = $this->workspaces()->publish($this->workspaceId, $this->activeUser());
+            $result = $this->workspaces()->publish($this->workspaceId, $this->activeUser(), $detachFromTemplate);
         } catch (ValidationException $exception) {
             $this->setErrorBag($exception->validator->errors());
 
             return false;
         }
         $this->pendingChanges = false;
-        session()->flash('saved', $result instanceof LandingTemplate
-            ? 'Template files saved. Existing landing releases are unchanged.'
-            : 'Files saved and a new landing release activated.');
+        session()->flash('saved', match (true) {
+            $result instanceof LandingTemplate => 'Template files saved. Existing landing releases are unchanged.',
+            $detachFromTemplate => 'Detached from template: a new release was activated and this is now a file landing.',
+            default => 'Files saved and a new landing release activated.',
+        });
         $this->redirect($result instanceof LandingTemplate ? route('templates.index') : route('landings.show', $result->landing_id), navigate: true);
         $this->skipRender();
 

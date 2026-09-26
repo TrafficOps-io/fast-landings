@@ -114,7 +114,37 @@ class FileWorkspaceServiceTest extends TestCase
         $this->assertFalse(collect($snapshot['files'])->keyBy('path')['large.html']['editable']);
     }
 
-    public function test_direct_edits_turn_generated_landing_into_static_release_and_rollback_restores_snapshot(): void
+    public function test_publishing_a_template_landing_draft_requires_explicit_detach_from_template(): void
+    {
+        $template = $this->template();
+        $landing = app(TemplateLandingService::class)->create($template, ['name' => 'Generated', 'slug' => 'generated'], ['title' => 'Original'], [], $this->user);
+        $release = $landing->activeRelease;
+        $id = $this->files->open($release, $this->user);
+        $this->files->write($id, 'index.html', '<h1>Hand edited</h1>', $this->user);
+
+        $this->validation(fn () => $this->files->publish($id, $this->user), 'Detach from template');
+
+        $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+        $this->assertDatabaseCount('landing_releases', 1);
+        $this->assertSame('<h1>Hand edited</h1>', $this->files->read($id, 'index.html', $this->user), 'The draft survives the refused publish.');
+
+        $published = $this->files->publish($id, $this->user, detachFromTemplate: true);
+        $this->assertNull($published->landing_template_id);
+        $this->assertNull($landing->fresh()->landing_template_id);
+    }
+
+    public function test_file_landing_draft_publishes_without_a_detach_confirmation(): void
+    {
+        $id = $this->files->open($this->release(), $this->user);
+        $this->assertFalse($this->files->info($id, $this->user)['template_linked']);
+
+        $published = $this->files->publish($id, $this->user);
+
+        $this->assertTrue($published->is_active);
+    }
+
+    public function test_detach_from_template_turns_template_landing_into_file_landing_and_activating_restores_snapshot(): void
     {
         $template = $this->template();
         $landing = app(TemplateLandingService::class)->create($template, ['name' => 'Generated', 'slug' => 'generated'], ['title' => 'Original'], [], $this->user);
@@ -122,7 +152,7 @@ class FileWorkspaceServiceTest extends TestCase
         $id = $this->files->open($previous, $this->user);
         $this->assertTrue($this->files->info($id, $this->user)['template_linked']);
         $this->files->write($id, 'index.html', '<h1>Hand edited</h1>', $this->user);
-        $published = $this->files->publish($id, $this->user);
+        $published = $this->files->publish($id, $this->user, detachFromTemplate: true);
 
         $this->assertNull($published->landing_template_id);
         $this->assertNull($published->template_values);
