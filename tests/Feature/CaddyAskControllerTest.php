@@ -78,6 +78,29 @@ class CaddyAskControllerTest extends TestCase
         }
     }
 
+    public function test_verified_domain_keeps_its_certificate_while_unreachable_or_error(): void
+    {
+        $domain = $this->domain('steady.example.test', $this->landing('Steady', active: true, withRelease: true), DomainStatus::Active);
+
+        foreach ([DomainStatus::Unreachable, DomainStatus::Error] as $status) {
+            $domain->update(['status' => $status]);
+            $this->get('/internal/caddy/ask?token=private-caddy-token&domain=steady.example.test')->assertOk();
+        }
+
+        $domain->update(['status' => DomainStatus::Drifted]);
+        $this->get('/internal/caddy/ask?token=private-caddy-token&domain=steady.example.test')->assertNotFound();
+    }
+
+    public function test_never_verified_domain_is_denied_a_certificate_in_every_transient_status(): void
+    {
+        $domain = $this->domain('fresh.example.test', $this->landing('Fresh', active: true, withRelease: true), DomainStatus::Pending);
+
+        foreach ([DomainStatus::PendingPropagation, DomainStatus::Unreachable, DomainStatus::Error] as $status) {
+            $domain->update(['status' => $status]);
+            $this->get('/internal/caddy/ask?token=private-caddy-token&domain=fresh.example.test')->assertNotFound();
+        }
+    }
+
     public function test_wildcard_dns_never_authorizes_unknown_subdomain_certificates(): void
     {
         $rootLanding = $this->landing('Wildcard root', active: true, withRelease: true);

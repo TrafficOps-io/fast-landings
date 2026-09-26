@@ -548,6 +548,75 @@ class DomainManagerTest extends TestCase
         $this->assertStringContainsString('mismatched', $drifted->last_error);
     }
 
+    public function test_domain_becomes_verified_the_first_time_a_check_finds_it_active(): void
+    {
+        $domain = $this->manager->createManual($this->landing('Manual'), 'promo.example.com');
+        $this->assertNull($domain->verified_at);
+
+        $this->manager->checkManual($domain);
+        $this->assertNull($domain->refresh()->verified_at);
+        $this->assertSame(DomainStatus::PendingPropagation, $domain->status);
+
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $verifiedAt = $this->manager->checkManual($domain)->verified_at;
+        $this->assertNotNull($verifiedAt);
+
+        $this->resolver->answers['promo.example.com:CNAME'] = ['other.example.com'];
+        $drifted = $this->manager->checkManual($domain);
+        $this->assertSame(DomainStatus::Drifted, $drifted->status);
+        $this->assertTrue($verifiedAt->equalTo($drifted->verified_at), 'Verification is recorded once and never cleared.');
+    }
+
+    public function test_verified_domain_stays_verified_through_an_unreachable_check(): void
+    {
+        $domain = $this->manager->createManual($this->landing('Manual'), 'promo.example.com');
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($domain);
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+
+        try {
+            $this->manager->checkManual($domain);
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+        $this->assertNotNull($domain->verified_at);
+    }
+
+    public function test_system_domains_are_verified_on_creation(): void
+    {
+        $domain = $this->manager->createSystem($this->landing('System'), 'offer');
+
+        $this->assertNotNull($domain->refresh()->verified_at);
+    }
+
+    public function test_cloudflare_check_marks_the_domain_verified_when_active(): void
+    {
+        [$integrationId, $zoneId] = $this->cloudflareTree();
+        $remote = CloudflareDomain::query()->create([
+            'zone_id' => $zoneId, 'hostname' => 'promo.example.com', 'kind' => 'exact', 'status' => CloudflareDomainStatus::Pending,
+        ]);
+        $domain = Domain::query()->create([
+            'landing_id' => $this->landing('Cloudflare')->getKey(),
+            'hostname' => 'promo.example.com',
+            'kind' => DomainKind::Custom,
+            'provider' => DomainProvider::Cloudflare,
+            'status' => DomainStatus::Pending,
+            'is_primary' => true,
+            'dns_target' => 'origin.landings.test',
+            'cloudflare_domain_id' => $remote->id,
+        ]);
+        $this->assertNull($domain->verified_at);
+        $this->cloudflare->shouldReceive('checkIntegration')->once()->andReturn(new CheckResult($integrationId, IntegrationStatus::Active, [
+            new DomainData($remote->id, 'promo.example.com', 'exact', CloudflareDomainStatus::Active, now()),
+        ]));
+
+        $checked = $this->manager->checkCloudflare($domain);
+
+        $this->assertSame(DomainStatus::Active, $checked->status);
+        $this->assertNotNull($checked->verified_at);
+    }
+
     #[DataProvider('addressTargets')]
     public function test_manual_domains_use_address_records_and_check_equivalent_address_formats(
         string $input,

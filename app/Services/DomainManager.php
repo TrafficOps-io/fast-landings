@@ -857,7 +857,8 @@ class DomainManager
 
         DB::transaction(function () use ($result, $integrationId, $returnedIds): void {
             foreach ($result->domains as $remote) {
-                Domain::query()->where('cloudflare_domain_id', $remote->id)->update([
+                // Saved through the model so a first Active status records verified_at.
+                Domain::query()->where('cloudflare_domain_id', $remote->id)->get()->each->update([
                     'status' => $this->mapCloudflareStatus($remote->status),
                     'last_checked_at' => $remote->lastCheckedAt ?? now(),
                     'last_error' => null,

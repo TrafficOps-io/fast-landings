@@ -6,6 +6,7 @@ use App\Enums\DomainKind;
 use App\Enums\DomainProvider;
 use App\Enums\DomainStatus;
 use App\Support\DnsTarget;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,9 +28,38 @@ class Domain extends Model
             'status' => DomainStatus::class,
             'is_primary' => 'boolean',
             'last_checked_at' => 'immutable_datetime',
+            'verified_at' => 'immutable_datetime',
             'verification_requested_at' => 'immutable_datetime',
             'next_check_at' => 'immutable_datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // A domain is verified once it has been Active at least once. The marker
+        // is recorded on the first Active status and never cleared (ADR-0003).
+        static::saving(function (self $domain): void {
+            if ($domain->status === DomainStatus::Active && $domain->verified_at === null) {
+                $domain->verified_at = now();
+            }
+        });
+    }
+
+    /**
+     * Domains on which a landing is currently served: the domain is verified and
+     * not drifted, and its landing is published with an active release. Transient
+     * check outcomes (Unreachable, Error) do not stop serving.
+     *
+     * Mirrored as plain SQL in deploy/projection-sync.php; keep both in sync.
+     */
+    public function scopeServable(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('verified_at')
+            ->where('status', '!=', DomainStatus::Drifted)
+            ->whereHas('landing', fn (Builder $landing) => $landing
+                ->where('is_active', true)
+                ->whereHas('releases', fn (Builder $releases) => $releases->where('is_active', true)));
     }
 
     public function landing(): BelongsTo

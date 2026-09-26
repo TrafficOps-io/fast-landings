@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\DomainStatus;
 use App\Models\Domain;
 use App\Services\LandingPhpRuntime;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -22,8 +21,8 @@ class LandingContentController extends Controller
         abort_if($hostname === config('fast-landings.panel_domain'), 404);
 
         $domain = Domain::query()
+            ->servable()
             ->where('hostname', $hostname)
-            ->where('status', DomainStatus::Active)
             ->with('landing.activeRelease')
             ->firstOrFail();
 

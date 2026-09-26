@@ -59,7 +59,10 @@ $desiredProjection = static function () use ($sourceRoot, $releasesRoot): array 
     $rows = DB::table('domains as domains')
         ->join('landings as landings', 'landings.id', '=', 'domains.landing_id')
         ->join('landing_releases as releases', 'releases.landing_id', '=', 'landings.id')
-        ->where('domains.status', 'active')
+        // Keep in sync with Domain::scopeServable(): a domain serves while it
+        // is verified and not drifted, whatever its latest check outcome.
+        ->whereNotNull('domains.verified_at')
+        ->where('domains.status', '!=', 'drifted')
         ->where('landings.is_active', true)
         ->where('releases.is_active', true)
         ->orderByDesc('releases.activated_at')
