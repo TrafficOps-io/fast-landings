@@ -196,4 +196,3 @@ _Avoid_: main domain, canonical
 The IP or hostname that every custom domain's DNS must point at. Pointing DNS at
 it is the only proof of control the panel requires.
 _Avoid_: origin, server address
-
