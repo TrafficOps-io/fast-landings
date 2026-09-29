@@ -467,15 +467,15 @@ class DomainManagerTest extends TestCase
     {
         [$integrationId, $zoneId] = $this->cloudflareTree();
         $this->expectZones($integrationId, [ZoneData::fromModel(CloudflareZone::findOrFail($zoneId))]);
-        $this->cloudflare->shouldReceive('attachDomain')->once()
+        $this->cloudflare->shouldReceive('attachDomain')->twice()
             ->withArgs(fn ($owner, $integration, $zone, DomainDefinition $definition): bool => $integration === $integrationId
-                && $zone === $zoneId && $definition->hostname === 'example.com'
-                && array_column($definition->records, 'name') === ['example.com', '*.example.com']
-                && $definition->records[0]->proxied === $proxied && $definition->records[1]->proxied === $proxied)
+                && $zone === $zoneId && in_array($definition->hostname, ['example.com', '*.example.com'], true)
+                && array_column($definition->records, 'name') === [$definition->hostname]
+                && $definition->records[0]->proxied === $proxied)
             ->andReturnUsing(function ($owner, $integration, $zone, DomainDefinition $definition): DomainData {
                 $remote = CloudflareDomain::query()->create([
                     'zone_id' => $zone, 'hostname' => $definition->hostname,
-                    'kind' => 'exact', 'status' => CloudflareDomainStatus::Pending,
+                    'kind' => $definition->isWildcard() ? 'wildcard' : 'exact', 'status' => CloudflareDomainStatus::Pending,
                 ]);
                 foreach ($definition->records as $record) {
                     $remote->records()->create([...$record->toArray(), 'signature' => $record->signature()]);
@@ -487,12 +487,13 @@ class DomainManagerTest extends TestCase
         $child = $this->manager->createSubdomain($base, null, 'offer');
         $this->assertNull($child->cloudflare_domain_id);
         $this->assertSame($base->id, $child->dnsSource()->id);
-        $this->assertDatabaseCount('cloudflare_domains', 1);
+        $this->assertDatabaseCount('cloudflare_domains', 2);
         $this->assertDatabaseCount('cloudflare_domain_records', 2);
 
         $this->cloudflare->shouldReceive('checkIntegration')->once()
             ->andReturn(new CheckResult($integrationId, IntegrationStatus::Active, [
                 new DomainData($base->cloudflare_domain_id, 'example.com', 'exact', CloudflareDomainStatus::Active, now()),
+                new DomainData($base->cloudflare_wildcard_domain_id, '*.example.com', 'wildcard', CloudflareDomainStatus::Active, now()),
             ]));
         $this->manager->checkCloudflare($base);
         $type = $proxied ? 'A' : 'CNAME';
@@ -1070,11 +1071,11 @@ class DomainManagerTest extends TestCase
         $remote = CloudflareDomain::query()->create([
             'zone_id' => $zoneId, 'hostname' => 'example.com', 'kind' => 'exact', 'status' => CloudflareDomainStatus::Active,
         ]);
-        $landing = $this->landing('Cleanup retry');
+        $landing = $this->publishedLanding('Cleanup retry');
         $domain = Domain::query()->create([
             'landing_id' => $landing->id, 'hostname' => 'example.com', 'dns_scope' => 'wildcard',
             'kind' => DomainKind::Custom, 'provider' => DomainProvider::Cloudflare,
-            'status' => DomainStatus::Active, 'is_primary' => true, 'dns_target' => 'origin.landings.test',
+            'status' => DomainStatus::Active, 'verified_at' => now(), 'is_primary' => true, 'dns_target' => 'origin.landings.test',
             'cloudflare_domain_id' => $remote->id,
         ]);
         $replacement = $this->manager->createManual($landing, 'backup.other.test');
@@ -1091,6 +1092,7 @@ class DomainManagerTest extends TestCase
             $this->fail('A partial remote cleanup failure was swallowed.');
         } catch (CloudflareTransportException) {
             $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+            $this->assertFalse($this->isServed($domain));
             $this->assertSame($remote->id, $domain->cloudflare_domain_id);
             $this->assertTrue($domain->is_primary);
             $this->assertFalse($replacement->refresh()->is_primary);
@@ -1135,6 +1137,21 @@ class DomainManagerTest extends TestCase
     private function isServed(Domain $domain): bool
     {
         return Domain::query()->servable()->whereKey($domain->getKey())->exists();
+    }
+
+    public function test_a_transient_failure_cannot_reopen_a_domain_after_proven_drift(): void
+    {
+        $domain = $this->manager->createManual($this->publishedLanding('Drift history'), 'offer.example.com');
+        $domain->transitionTo(DomainStatus::Active);
+        $this->assertTrue($this->isServed($domain));
+        $domain->transitionTo(DomainStatus::Drifted);
+        $this->assertFalse($this->isServed($domain));
+        foreach ([DomainStatus::Unreachable, DomainStatus::Error, DomainStatus::PendingPropagation] as $status) {
+            $domain->transitionTo($status);
+            $this->assertFalse($this->isServed($domain));
+        }
+        $domain->transitionTo(DomainStatus::Active);
+        $this->assertTrue($this->isServed($domain));
     }
 
     /** @return array{string, string} */

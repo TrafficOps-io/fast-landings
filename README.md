@@ -249,3 +249,22 @@ The application installs the shared infrastructure and template engine from Pack
 ## License
 
 Fast Landings is released under the [MIT License](LICENSE).
+
+### Upgrading the domain checks
+
+Run `php artisan migrate --force` before restarting the panel, queue workers and
+projection-sync service. The migrations backfill `verified_at` for domains that
+are Active at upgrade time, remove the unused `verification_token`, and retain
+confirmed DNS drift until a subsequent successful check. Domains that were
+verified before upgrade but are currently Error or Unreachable need one
+successful check to establish the new verification marker.
+
+Cloudflare wildcard bases now reserve two independent claims, one for the apex
+and one for `*.base`, to comply with tops-infra's expectation containment rules.
+The migration transfers existing wildcard record rows without contacting
+Cloudflare; remote record IDs and managed/adopted ownership remain intact. If a
+separate wildcard claim already reserves the same hostname, the migration stops
+before changing the schema: resolve that duplicate claim before retrying. Pause
+queue workers and projection-sync during this upgrade so old code does not run
+against the split claims. Rolling back this migration merges the record rows
+again and requires the previous tops-infra containment policy.

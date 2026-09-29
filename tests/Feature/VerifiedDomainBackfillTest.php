@@ -13,14 +13,14 @@ class VerifiedDomainBackfillTest extends TestCase
 
     public function test_existing_active_domains_are_backfilled_as_verified_and_others_are_not(): void
     {
-        // Roll back the verification_token drop and the verified_at addition.
-        $this->artisan('migrate:rollback', ['--step' => 2])->assertSuccessful();
+        $migration = require base_path('database/migrations/2026_09_26_000000_add_verified_at_to_domains.php');
+        $migration->down();
         $this->assertFalse(DB::getSchemaBuilder()->hasColumn('domains', 'verified_at'));
         $active = $this->insertDomain('active.example.test', 'active');
         $pending = $this->insertDomain('pending.example.test', 'pending');
         $drifted = $this->insertDomain('drifted.example.test', 'drifted');
 
-        $this->artisan('migrate')->assertSuccessful();
+        $migration->up();
 
         $this->assertNotNull(DB::table('domains')->where('id', $active)->value('verified_at'));
         $this->assertNull(DB::table('domains')->where('id', $pending)->value('verified_at'));

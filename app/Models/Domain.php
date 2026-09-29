@@ -30,6 +30,7 @@ class Domain extends Model
             'is_primary' => 'boolean',
             'last_checked_at' => 'immutable_datetime',
             'verified_at' => 'immutable_datetime',
+            'drifted_at' => 'immutable_datetime',
             'verification_requested_at' => 'immutable_datetime',
             'next_check_at' => 'immutable_datetime',
         ];
@@ -49,6 +50,9 @@ class Domain extends Model
     {
         if ($status === DomainStatus::Active) {
             (clone $domains)->whereNull('verified_at')->update(['verified_at' => now()]);
+            $attributes['drifted_at'] = null;
+        } elseif ($status === DomainStatus::Drifted) {
+            $attributes['drifted_at'] = now();
         }
 
         return $domains->update(['status' => $status, ...$attributes]);
@@ -67,13 +71,15 @@ class Domain extends Model
      * not drifted, and its landing is published with an active release. Transient
      * check outcomes (Unreachable, Error) do not stop serving.
      *
-     * Mirrored as plain SQL in deploy/projection-sync.php; keep both in sync.
+     * A confirmed drift persists through transient failures until the next Active
+     * result. deploy/projection-sync.php reuses this scope through ServableProjection.
      */
     public function scopeServable(Builder $query): Builder
     {
         return $query
             ->whereNotNull($query->qualifyColumn('verified_at'))
             ->where($query->qualifyColumn('status'), '!=', DomainStatus::Drifted)
+            ->whereNull($query->qualifyColumn('drifted_at'))
             ->whereHas('landing', fn (Builder $landing) => $landing
                 ->where('is_active', true)
                 ->whereHas('releases', fn (Builder $releases) => $releases->where('is_active', true)));
@@ -192,5 +198,16 @@ class Domain extends Model
     public function cloudflareDomain(): BelongsTo
     {
         return $this->belongsTo(ModelResolver::class('domain'), 'cloudflare_domain_id');
+    }
+
+    public function cloudflareWildcardDomain(): BelongsTo
+    {
+        return $this->belongsTo(ModelResolver::class('domain'), 'cloudflare_wildcard_domain_id');
+    }
+
+    /** @return list<string> */
+    public function cloudflareClaimIds(): array
+    {
+        return array_values(array_filter([$this->cloudflare_domain_id, $this->cloudflare_wildcard_domain_id]));
     }
 }

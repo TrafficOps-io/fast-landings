@@ -26,6 +26,8 @@ class ProjectionSyncPredicateTest extends TestCase
         $this->domain('active.example.test', $this->landing('Active', published: true, withRelease: true), DomainStatus::Active, verified: true);
         $this->domain('steady.example.test', $this->landing('Steady', published: true, withRelease: true), DomainStatus::Unreachable, verified: true);
         $this->domain('erroring.example.test', $this->landing('Erroring', published: true, withRelease: true), DomainStatus::Error, verified: true);
+        $this->domain('drift-timeout.example.test', $this->landing('Drift timeout', published: true, withRelease: true), DomainStatus::Active, verified: true)
+            ->transitionTo(DomainStatus::Drifted)->transitionTo(DomainStatus::Unreachable);
         $this->domain('drifted.example.test', $this->landing('Drifted', published: true, withRelease: true), DomainStatus::Drifted, verified: true);
         $this->domain('pending.example.test', $this->landing('Pending', published: true, withRelease: true), DomainStatus::Pending, verified: false);
         $this->domain('flaky.example.test', $this->landing('Flaky', published: true, withRelease: true), DomainStatus::Unreachable, verified: false);

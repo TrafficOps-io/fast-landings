@@ -9,9 +9,12 @@ Active at least once), is not Drifted, and the landing is Published. Transient
 check outcomes (Unreachable from a resolver timeout, Error from a failed worker)
 must not take a live site offline, and a wildcard base failing transiently must
 not take down its child domains. Serving is gated on the domain's `verified_at`
-marker (set on its first Active status, never cleared) and on the domain not
-being Drifted; the latest check status otherwise plays no part. Only Drifted,
-which means DNS really no longer points at the origin target, stops serving.
+marker (set on its first Active status, never cleared) and on the absence of
+unresolved drift. A Drifted result records `drifted_at`; only a later Active
+result clears it. The latest check status otherwise plays no part: a timeout
+after proven drift cannot reopen a hostname whose DNS remains wrong. The six
+check statuses remain available to operators, including the latest transient
+failure while earlier drift is unresolved.
 Drift is itself derived from verification: DNS that no longer matches is
 Drifted for a verified domain and still Pending propagation for one that was
 never verified.

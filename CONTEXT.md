@@ -163,7 +163,8 @@ _Avoid_: verified (as a status name)
 **Verified domain**:
 A domain that has been Active at least once. A landing is served on a domain
 only while the domain is verified and not drifted, and the landing is published.
-Transient check failures (Unreachable, Error) do not stop serving.
+Transient check failures (Unreachable, Error) do not stop serving unless an
+earlier drift is still unresolved. A successful DNS check resolves drift.
 
 **Drifted** (domain status):
 The most recent DNS check found the hostname no longer points at the origin
