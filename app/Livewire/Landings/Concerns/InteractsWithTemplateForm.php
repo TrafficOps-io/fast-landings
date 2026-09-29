@@ -7,6 +7,7 @@ use App\Services\Templates\TemplateImageUploadPolicy;
 use App\Services\Templates\TemplateMacroSuggestions;
 use App\Services\Templates\TemplateMediaService;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -170,6 +171,19 @@ trait InteractsWithTemplateForm
                 $this->resetValidation($key);
             }
         }
+    }
+
+    /** Present removed field names without exposing validation paths or engine details. */
+    private function savedTemplateMessage(string $message, array $warnings): string
+    {
+        if ($warnings === []) {
+            return $message;
+        }
+        $fields = collect(array_keys($warnings))
+            ->map(fn (string $path): string => Str::headline(Str::afterLast($path, '.')))
+            ->unique()->implode(', ');
+
+        return $message.' Values for fields no longer in this template were removed: '.$fields.'.';
     }
 
     private function activeUser(): User

@@ -78,7 +78,7 @@ class LandingPreviewTest extends TestCase
         $this->assertSame(0, $service->requestMissing());
         Queue::assertNothingPushed();
         Livewire::actingAs(User::factory()->create())->test(Index::class)
-            ->assertSee('Open the website to view this PHP page')
+            ->assertSee('Open the landing to view this PHP page')
             ->assertDontSee('Refresh preview');
     }
 

@@ -494,21 +494,51 @@ TPL,
         $this->assertDatabaseHas('landing_templates', ['id' => $template->id]);
     }
 
-    public function test_administrator_deleting_template_keeps_generated_landing_and_release(): void
+    public function test_template_used_by_landings_cannot_be_deleted_and_the_message_names_them(): void
+    {
+        $template = $this->import($this->definitionFile());
+        $first = $this->createLanding($template, 'first-article');
+        $second = $this->createLanding($template, 'second-article');
+        $second->update(['name' => 'Second article']);
+        $release = $first->activeRelease;
+
+        try {
+            app(TemplateArchiveService::class)->delete($template);
+            $this->fail('A template used by landings was deleted.');
+        } catch (ValidationException $exception) {
+            $message = $exception->errors()['template'][0];
+            $this->assertStringContainsString('Generated article', $message);
+            $this->assertStringContainsString('Second article', $message);
+        }
+
+        Livewire::test(Index::class)
+            ->call('deleteTemplate', $template->id)
+            ->assertHasErrors('template')
+            ->assertSee('cannot be deleted')
+            ->assertSee('Generated article')
+            ->assertSee('Second article');
+
+        $this->assertDatabaseHas('landing_templates', ['id' => $template->id]);
+        $this->assertSame($template->id, $first->fresh()->landing_template_id);
+        $this->assertTrue($release->fresh()->is_active);
+        $this->assertNotSame([], Storage::disk('landings')->allFiles($template->storage_path));
+    }
+
+    public function test_template_can_be_deleted_once_no_landing_uses_it(): void
     {
         $template = $this->import($this->definitionFile());
         $landing = $this->createLanding($template);
         $release = $landing->activeRelease;
-        $html = Storage::disk('landings')->get($release->storage_path.'/index.html');
+        // Replacing the template landing's content with a ZIP makes it a file landing.
+        app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
+        $this->assertNull($landing->fresh()->landing_template_id);
 
         Livewire::test(Index::class)
             ->call('deleteTemplate', $template->id)
             ->assertHasNoErrors();
 
         $this->assertDatabaseMissing('landing_templates', ['id' => $template->id]);
-        $this->assertNull($landing->fresh()->landing_template_id);
-        $this->assertTrue($release->fresh()->is_active);
-        $this->assertSame($html, Storage::disk('landings')->get($release->storage_path.'/index.html'));
+        $this->assertNull($release->fresh()->landing_template_id);
         $this->assertSame([], Storage::disk('landings')->allFiles($template->storage_path));
     }
 
@@ -643,9 +673,17 @@ TPL,
         $landing = $this->createLanding($template);
         $generated = $landing->activeRelease;
 
-        Livewire::test(Show::class, ['landing' => $landing])
+        $show = Livewire::test(Show::class, ['landing' => $landing])
             ->assertSee('Edit template data')->assertSee('Change template')->assertSee('Replace with ZIP archive')
-            ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => '<h1>ZIP content</h1>'])->getContent()))
+            ->assertSee('Detach from template')
+            ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => '<h1>ZIP content</h1>'])->getContent()));
+
+        // A template landing is not detached silently: the ZIP deploy needs the explicit confirmation.
+        $show->call('deploy')->assertHasErrors('detachFromTemplate');
+        $this->assertSame($generated->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+
+        $show->set('detachFromTemplate', true)
             ->call('deploy')->assertHasNoErrors()->assertSee('Use a template')->assertDontSee('Edit template data');
 
         $landing->refresh();
@@ -723,6 +761,7 @@ TPL,
         $component->call('save')->assertHasErrors('template');
         Livewire::test(Show::class, ['landing' => $landing])
             ->set('archive', UploadedFile::fake()->createWithContent('landing.zip', $this->zip(['index.html' => 'Too large'])->getContent()))
+            ->set('detachFromTemplate', true)
             ->call('deploy')->assertHasErrors('archive');
 
         $this->assertSame($previous->id, $landing->fresh()->activeRelease->id);
@@ -751,7 +790,7 @@ TPL,
         $template = $this->import($this->definitionFile());
         $landing = $this->createLanding($template);
         $component = Livewire::test(EditTemplate::class, ['landing' => $landing]);
-        $zip = app(LandingArchiveService::class)->deploy($landing, $this->zip(['index.html' => 'New version']), $this->administrator);
+        $zip = app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => 'New version']), $this->administrator);
 
         $component->set('values.title', 'Stale edit')->call('save')->assertHasErrors('template');
         $this->assertSame($zip->id, $landing->fresh()->activeRelease->id);
@@ -765,7 +804,11 @@ TPL,
         $replacement = $this->import($this->definitionFile());
         $landing = $this->createLanding($template);
         $previous = $landing->activeRelease;
+        // The landing must stop using the template before the template can be deleted;
+        // activating the older release afterwards restores a snapshot of a deleted template.
+        app(LandingArchiveService::class)->deployDetachingFromTemplate($landing, $this->zip(['index.html' => '<h1>File landing</h1>']), $this->administrator);
         app(TemplateArchiveService::class)->delete($template);
+        app(LandingArchiveService::class)->activate($landing->fresh(), $previous);
         $landing->refresh();
 
         Livewire::test(Show::class, ['landing' => $landing])->assertSee('Template no longer available')->assertSee('Use a template');

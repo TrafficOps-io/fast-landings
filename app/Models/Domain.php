@@ -6,10 +6,12 @@ use App\Enums\DomainKind;
 use App\Enums\DomainProvider;
 use App\Enums\DomainStatus;
 use App\Support\DnsTarget;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use TrafficOps\Cloudflare\Models\CloudflareDomain;
 use TrafficOps\Cloudflare\Support\ModelResolver;
 
@@ -27,9 +29,60 @@ class Domain extends Model
             'status' => DomainStatus::class,
             'is_primary' => 'boolean',
             'last_checked_at' => 'immutable_datetime',
+            'verified_at' => 'immutable_datetime',
+            'drifted_at' => 'immutable_datetime',
             'verification_requested_at' => 'immutable_datetime',
             'next_check_at' => 'immutable_datetime',
         ];
+    }
+
+    /**
+     * The single write path for a domain status. A domain is verified once it has
+     * been Active at least once: the first Active status records `verified_at`,
+     * which is never cleared (ADR-0003). Every status write, including bulk ones,
+     * must go through here so the marker cannot be skipped.
+     *
+     * @param  Builder<self>|Relation<self, *, *>  $domains  The rows to transition.
+     * @param  array<string, mixed>  $attributes  Further columns written alongside the status.
+     * @return int Number of rows transitioned.
+     */
+    public static function transition(Builder|Relation $domains, DomainStatus $status, array $attributes = []): int
+    {
+        if ($status === DomainStatus::Active) {
+            (clone $domains)->whereNull('verified_at')->update(['verified_at' => now()]);
+            $attributes['drifted_at'] = null;
+        } elseif ($status === DomainStatus::Drifted) {
+            $attributes['drifted_at'] = now();
+        }
+
+        return $domains->update(['status' => $status, ...$attributes]);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function transitionTo(DomainStatus $status, array $attributes = []): static
+    {
+        static::transition(static::query()->whereKey($this->getKey()), $status, $attributes);
+
+        return $this->refresh();
+    }
+
+    /**
+     * Domains on which a landing is currently served: the domain is verified and
+     * not drifted, and its landing is published with an active release. Transient
+     * check outcomes (Unreachable, Error) do not stop serving.
+     *
+     * A confirmed drift persists through transient failures until the next Active
+     * result. deploy/projection-sync.php reuses this scope through ServableProjection.
+     */
+    public function scopeServable(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull($query->qualifyColumn('verified_at'))
+            ->where($query->qualifyColumn('status'), '!=', DomainStatus::Drifted)
+            ->whereNull($query->qualifyColumn('drifted_at'))
+            ->whereHas('landing', fn (Builder $landing) => $landing
+                ->where('is_active', true)
+                ->whereHas('releases', fn (Builder $releases) => $releases->where('is_active', true)));
     }
 
     public function landing(): BelongsTo
@@ -145,5 +198,16 @@ class Domain extends Model
     public function cloudflareDomain(): BelongsTo
     {
         return $this->belongsTo(ModelResolver::class('domain'), 'cloudflare_domain_id');
+    }
+
+    public function cloudflareWildcardDomain(): BelongsTo
+    {
+        return $this->belongsTo(ModelResolver::class('domain'), 'cloudflare_wildcard_domain_id');
+    }
+
+    /** @return list<string> */
+    public function cloudflareClaimIds(): array
+    {
+        return array_values(array_filter([$this->cloudflare_domain_id, $this->cloudflare_wildcard_domain_id]));
     }
 }

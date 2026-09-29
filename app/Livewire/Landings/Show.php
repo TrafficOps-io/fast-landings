@@ -48,6 +48,9 @@ class Show extends Component
 
     public $archive;
 
+    /** Explicit confirmation that a ZIP deploy detaches a template landing from its template. */
+    public bool $detachFromTemplate = false;
+
     public function mount(Landing $landing): void
     {
         $this->landingId = $landing->id;
@@ -83,9 +86,17 @@ class Show extends Component
     public function deploy(LandingArchiveService $archives): void
     {
         $this->validate(['archive' => ['required', 'file', 'mimes:zip', 'max:'.config('fast-landings.max_upload_kb')]]);
-        $archives->deploy($this->landing(), $this->archive, auth()->user());
-        $this->reset('archive');
-        session()->flash('saved', 'New release deployed and activated.');
+        $landing = $this->landing();
+        $detaching = $landing->landing_template_id !== null && $this->detachFromTemplate;
+        if ($detaching) {
+            $archives->deployDetachingFromTemplate($landing, $this->archive, auth()->user());
+        } else {
+            $archives->deploy($landing, $this->archive, auth()->user());
+        }
+        $this->reset('archive', 'detachFromTemplate');
+        session()->flash('saved', $detaching
+            ? 'Detached from template: the ZIP release is active and this is now a file landing.'
+            : 'New release deployed and activated.');
     }
 
     public function activate(string $releaseId, LandingArchiveService $archives): void

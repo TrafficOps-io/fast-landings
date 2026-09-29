@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 use Normalizer;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -26,6 +27,10 @@ class FileWorkspaceService
 
     public function __construct(private ArchiveExtractor $extractor) {}
 
+    /**
+     * Open a draft: a private working copy of a template's package or of a
+     * landing's active release. A non-active release is refused.
+     */
     public function open(LandingTemplate|LandingRelease $target, User $user): string
     {
         $user = $this->authorize($user, $target instanceof LandingTemplate);
@@ -45,6 +50,13 @@ class FileWorkspaceService
                 } else {
                     $landing = Landing::query()->lockForUpdate()->findOrFail($target->landing_id);
                     $target = LandingRelease::query()->lockForUpdate()->findOrFail($target->id);
+                    // A draft is a working copy of the active release only; editing an older
+                    // release is done by activating it first.
+                    if (! $target->isDraftable()) {
+                        throw ValidationException::withMessages([
+                            'release' => __('Activate this release first.'),
+                        ]);
+                    }
                     $metadata = [
                         'kind' => 'landing', 'target_id' => $target->id, 'landing_id' => $landing->id,
                         'name' => $landing->name, 'revision' => (string) $landing->activeRelease?->id,
@@ -231,9 +243,32 @@ class FileWorkspaceService
         return $this->withWorkspace($id, $user, fn (string $base): string => $this->zip($base));
     }
 
+    /**
+     * Publish a draft as a new release (landing) or a replaced package (template).
+     *
+     * A draft of a template landing is refused here: publishing it would turn the
+     * landing into a file landing, which is the explicit operation
+     * publishDetachingFromTemplate().
+     */
     public function publish(string $id, User $user): LandingTemplate|LandingRelease
     {
-        return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user): LandingTemplate|LandingRelease {
+        return $this->publishDraft($id, $user, detachFromTemplate: false);
+    }
+
+    /** Detach from template: publish a template landing's draft, making it a file landing. */
+    public function publishDetachingFromTemplate(string $id, User $user): LandingRelease
+    {
+        $result = $this->publishDraft($id, $user, detachFromTemplate: true);
+        if (! $result instanceof LandingRelease) {
+            throw new LogicException('Only a landing draft can detach from a template.');
+        }
+
+        return $result;
+    }
+
+    private function publishDraft(string $id, User $user, bool $detachFromTemplate): LandingTemplate|LandingRelease
+    {
+        return $this->withWorkspace($id, $user, function (string $base, array $metadata) use ($user, $detachFromTemplate): LandingTemplate|LandingRelease {
             $archive = $this->zip($base);
             try {
                 $file = new UploadedFile($archive, $metadata['kind'].'-files.zip', 'application/zip', null, true);
@@ -243,10 +278,13 @@ class FileWorkspaceService
                         'name' => $template->name, 'description' => $template->description,
                     ], $file, $user, $metadata['revision'], trustedWorkspaceArchive: true);
                 } else {
-                    // Directly edited output becomes an independent release. The previous release keeps
-                    // its template snapshot, so activating it can still restore the form editor.
+                    // Edited files become a release without a template snapshot. LandingArchiveService
+                    // refuses that for a template landing unless the operator detaches explicitly.
                     $landing = Landing::query()->findOrFail($metadata['landing_id']);
-                    $result = app(LandingArchiveService::class)->deploy($landing, $file, $user, expectedActiveReleaseId: $metadata['revision']);
+                    $archives = app(LandingArchiveService::class);
+                    $result = $detachFromTemplate
+                        ? $archives->deployDetachingFromTemplate($landing, $file, $user, expectedActiveReleaseId: $metadata['revision'])
+                        : $archives->deploy($landing, $file, $user, expectedActiveReleaseId: $metadata['revision']);
                 }
                 Storage::disk(config('fast-landings.storage_disk'))->deleteDirectory($base);
 

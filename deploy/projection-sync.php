@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use App\Support\ServableProjection;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 
@@ -56,19 +57,10 @@ $app->make(Kernel::class)->bootstrap();
 
 /** @return array{0: array<string, string>, 1: array<string, true>, 2: list<string>} */
 $desiredProjection = static function () use ($sourceRoot, $releasesRoot): array {
-    $rows = DB::table('domains as domains')
-        ->join('landings as landings', 'landings.id', '=', 'domains.landing_id')
-        ->join('landing_releases as releases', 'releases.landing_id', '=', 'landings.id')
-        ->where('domains.status', 'active')
-        ->where('landings.is_active', true)
-        ->where('releases.is_active', true)
-        ->orderByDesc('releases.activated_at')
-        ->get([
-            'domains.hostname',
-            'landings.id as landing_id',
-            'releases.id as release_id',
-            'releases.storage_path',
-        ]);
+    // The serving predicate is Domain::scopeServable(); ServableProjection joins
+    // the active release onto it. tests/Feature/ProjectionSyncPredicateTest.php
+    // asserts both select the same domains.
+    $rows = ServableProjection::rows();
 
     $sourceRootPath = realpath($sourceRoot);
     if ($sourceRootPath === false) {

@@ -141,6 +141,60 @@ class LandingContentControllerTest extends TestCase
         $this->get('http://pending.example.test/')->assertNotFound();
     }
 
+    public function test_verified_domain_keeps_serving_while_unreachable(): void
+    {
+        [, , $domain] = $this->publishedLanding('steady.example.test', '<h1>Still online</h1>');
+
+        $domain->update(['status' => DomainStatus::Unreachable]);
+        $this->assertSame('<h1>Still online</h1>', $this->fileContents($this->get('http://steady.example.test/')));
+
+        $domain->update(['status' => DomainStatus::Error]);
+        $this->assertSame('<h1>Still online</h1>', $this->fileContents($this->get('http://steady.example.test/')));
+    }
+
+    public function test_verified_domain_stops_serving_once_drifted(): void
+    {
+        [, , $domain] = $this->publishedLanding('moved.example.test', '<h1>Moved away</h1>');
+
+        $domain->update(['status' => DomainStatus::Drifted]);
+
+        $this->get('http://moved.example.test/')->assertNotFound();
+    }
+
+    public function test_never_verified_domain_is_not_served_even_after_transient_statuses(): void
+    {
+        [, , $domain] = $this->publishedLanding('fresh.example.test', '<h1>Never verified</h1>', DomainStatus::Pending);
+
+        foreach ([DomainStatus::PendingPropagation, DomainStatus::Unreachable, DomainStatus::Error] as $status) {
+            $domain->update(['status' => $status]);
+            $this->get('http://fresh.example.test/')->assertNotFound();
+        }
+    }
+
+    public function test_paused_landing_is_not_served_on_a_verified_domain(): void
+    {
+        [$landing] = $this->publishedLanding('paused.example.test', '<h1>Paused</h1>');
+
+        $landing->update(['is_active' => false]);
+
+        $this->get('http://paused.example.test/')->assertNotFound();
+    }
+
+    public function test_verified_child_domain_keeps_serving_while_wildcard_base_fails_transiently(): void
+    {
+        [, , $base] = $this->publishedLanding('example.test', '<h1>Root landing</h1>');
+        $base->update(['dns_scope' => 'wildcard']);
+        [, , $child] = $this->publishedLanding('offer.example.test', '<h1>Offer landing</h1>');
+        $child->update(['parent_domain_id' => $base->id]);
+
+        // A transient base failure is copied onto its children by DomainManager::refreshSubdomains.
+        $base->update(['status' => DomainStatus::Unreachable]);
+        $child->update(['status' => DomainStatus::Unreachable]);
+
+        $this->assertSame('<h1>Root landing</h1>', $this->fileContents($this->get('http://example.test/')));
+        $this->assertSame('<h1>Offer landing</h1>', $this->fileContents($this->get('http://offer.example.test/')));
+    }
+
     public function test_matching_etag_returns_not_modified_without_a_body(): void
     {
         $this->publishedLanding('etag.example.test', '<h1>Cacheable</h1>');
@@ -321,6 +375,7 @@ class LandingContentControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => $status,
+            'verified_at' => $status === DomainStatus::Active ? now() : null,
             'is_primary' => true,
             'dns_target' => 'origin.fast-landings.test',
         ]);

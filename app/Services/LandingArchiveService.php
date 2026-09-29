@@ -17,7 +17,29 @@ use ZipArchive;
 
 class LandingArchiveService
 {
+    /**
+     * Deploy: create a release from an archive and make it the active release.
+     *
+     * Without a template this deploys raw files, which for a template landing
+     * would silently turn it into a file landing. That is the explicit operation
+     * "Detach from template" (see deployDetachingFromTemplate); here it is refused.
+     */
     public function deploy(Landing $landing, UploadedFile $archive, User $uploader, ?LandingTemplate $template = null, ?array $templateValues = null, ?string $expectedActiveReleaseId = null): LandingRelease
+    {
+        return $this->store($landing, $archive, $uploader, $template, $templateValues, $expectedActiveReleaseId, detachFromTemplate: false);
+    }
+
+    /**
+     * Detach from template: deploy raw files onto a template landing, making it a
+     * file landing. The previous release keeps its template snapshot, so activating
+     * it returns to the template.
+     */
+    public function deployDetachingFromTemplate(Landing $landing, UploadedFile $archive, User $uploader, ?string $expectedActiveReleaseId = null): LandingRelease
+    {
+        return $this->store($landing, $archive, $uploader, null, null, $expectedActiveReleaseId, detachFromTemplate: true);
+    }
+
+    private function store(Landing $landing, UploadedFile $archive, User $uploader, ?LandingTemplate $template, ?array $templateValues, ?string $expectedActiveReleaseId, bool $detachFromTemplate): LandingRelease
     {
         $zip = new ZipArchive;
         $opened = $zip->open($archive->getRealPath());
@@ -77,10 +99,15 @@ class LandingArchiveService
                 'template_values' => $template ? $templateValues : null,
             ]);
 
-            DB::transaction(function () use ($landing, $release, $expectedActiveReleaseId): void {
+            DB::transaction(function () use ($landing, $release, $expectedActiveReleaseId, $template, $detachFromTemplate): void {
                 $locked = Landing::query()->whereKey($landing->id)->lockForUpdate()->firstOrFail();
                 if ($expectedActiveReleaseId !== null && (string) $locked->activeRelease?->id !== $expectedActiveReleaseId) {
                     throw ValidationException::withMessages(['files' => 'This landing has changed since you opened the file editor. Open a new draft before publishing.']);
+                }
+                if ($template === null && $locked->landing_template_id !== null && ! $detachFromTemplate) {
+                    throw ValidationException::withMessages([
+                        'detachFromTemplate' => __('This is a template landing. Deploying files detaches it from its template; confirm "Detach from template" to continue.'),
+                    ]);
                 }
                 LandingRelease::query()->where('landing_id', $landing->id)->update([
                     'is_active' => false,

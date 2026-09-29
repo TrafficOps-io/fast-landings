@@ -149,6 +149,13 @@ The private screenshot worker does not execute PHP. PHP entrypoint templates nee
 
 Single braces read the current visitor request: `{query.subid}`, `{headers.user-agent}`, `{body.name}`. Dotted paths traverse nested form/JSON values, for example `{body.customer.name}` or `{body.items.0.name}`. `{query.*}`, `{headers.*}` and `{body.*}` produce the entire source as JSON. Query and body values are separate; body reads form submissions or JSON, and header names are case-insensitive. Missing values render as empty text. Values are HTML-escaped and are never evaluated as PHP or as another macro. Write `\{body.name}` to show a literal macro.
 
+The panel uses `trafficops/tops-runtime` for request macro syntax, lookup and
+rendering, and embeds its standalone engine when publishing a dynamic release.
+Visitor requests need no Composer autoload. Present null values render empty;
+booleans render `true`/`false`; malformed composite JSON uses substitution and
+partial output. Each release captures the engine at publication; republish to
+adopt later changes. HTML-context checks and `@validation` remain application-owned.
+
 `{{title}}` still reads a saved template setting. That setting can itself contain `Thank you, {body.name}!`: the setting is compiled at publication, while the request value is inserted on every visit. Text, multiline text, Wysiwyg and Markdown settings support **Insert variable** and suggestions after typing `{`. Suggestions include validation parameters from all template pages. URL settings allow macros within a valid static URL and must retain its scheme and host. A complete dynamic URL such as `{query.url}` is not accepted as a URL setting. Email settings can contain a whole macro such as `{body.email}` or a macro within an address.
 
 Declare request rules outside `@layout`, separately on each page. These parameters do not create fields in the landing settings form:

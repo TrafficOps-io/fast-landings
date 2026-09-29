@@ -133,4 +133,67 @@ TPL));
             ->call('create')->assertHasErrors('values.notes');
         $this->assertSame(0, Landing::query()->count());
     }
+
+    public function test_optional_select_can_be_cleared_while_required_and_declared_default_choices_are_preserved(): void
+    {
+        $this->template->update(['definition' => app(TemplateSourceParser::class)->parse(<<<'TPL'
+@param optionalChoice Select options="wide:Wide|narrow:Narrow"
+@param requiredChoice Select options="wide:Wide|narrow:Narrow" required
+@param declaredChoice Select = "narrow" options="wide:Wide|narrow:Narrow"
+@layout
+[{{optionalChoice}}|{{requiredChoice}}|{{declaredChoice}}]
+@endlayout
+TPL)]);
+        $component = Livewire::test(FromTemplate::class, ['template' => $this->template])
+            ->assertSet('values.optionalChoice', '')->assertSet('values.declaredChoice', 'narrow');
+        $document = new \DOMDocument;
+        @$document->loadHTML($component->html());
+        $selects = [];
+        foreach ($document->getElementsByTagName('select') as $select) {
+            $selects[$select->getAttribute('wire:model.live')] = $select;
+        }
+        $optionalEmpty = $selects['values.optionalChoice']->getElementsByTagName('option')->item(0);
+        $this->assertSame('', $optionalEmpty->getAttribute('value'));
+        $this->assertFalse($optionalEmpty->hasAttribute('disabled'));
+        $this->assertTrue($optionalEmpty->hasAttribute('selected'));
+        $requiredEmpty = $selects['values.requiredChoice']->getElementsByTagName('option')->item(0);
+        $this->assertTrue($requiredEmpty->hasAttribute('disabled'));
+        $this->assertTrue($selects['values.requiredChoice']->hasAttribute('required'));
+        $selectedDefaults = [];
+        foreach ($selects['values.declaredChoice']->getElementsByTagName('option') as $option) {
+            if ($option->hasAttribute('selected')) {
+                $selectedDefaults[] = $option->getAttribute('value');
+            }
+        }
+        $this->assertSame(['narrow'], $selectedDefaults);
+        $component->set('name', 'Select choices')->set('slug', 'select-choices')
+            ->set('values.optionalChoice', 'wide')->set('values.optionalChoice', '')
+            ->call('create')->assertHasErrors('values.requiredChoice');
+        $this->assertDatabaseCount('landings', 0);
+        $component->set('values.requiredChoice', 'wide')->call('create')->assertHasNoErrors();
+        $this->assertSame(['optionalChoice' => '', 'requiredChoice' => 'wide', 'declaredChoice' => 'narrow'], Landing::query()->sole()->template_values);
+    }
+
+    public function test_creation_and_editing_report_removed_fields_without_persisting_unknown_values(): void
+    {
+        Livewire::test(FromTemplate::class, ['template' => $this->template])
+            ->set('name', 'Retired fields')->set('slug', 'retired-fields')
+            ->set('values.oldHeadline', 'Old headline')->set('values.items.0.oldCopy', 'Old copy')
+            ->call('create')->assertHasNoErrors();
+        $landing = Landing::query()->sole();
+        $this->assertArrayNotHasKey('oldHeadline', $landing->template_values);
+        $this->assertArrayNotHasKey('oldCopy', $landing->template_values['items'][0]);
+        $this->assertStringContainsString('Old Headline', session('saved'));
+        $this->assertStringContainsString('Old Copy', session('saved'));
+        $this->assertStringNotContainsString('items.0.oldCopy', session('saved'));
+        $this->get(route('landings.show', $landing))->assertSee('Old Headline')->assertSee('Old Copy');
+
+        $release = $landing->activeRelease;
+        $values = $release->template_values;
+        $values['removedTitle'] = 'Retired title';
+        $release->update(['template_values' => $values]);
+        Livewire::test(EditTemplate::class, ['landing' => $landing])->call('save')->assertHasNoErrors();
+        $this->assertArrayNotHasKey('removedTitle', $landing->refresh()->template_values);
+        $this->assertStringContainsString('Removed Title', session('saved'));
+    }
 }

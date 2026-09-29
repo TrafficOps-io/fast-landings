@@ -3,20 +3,23 @@
 namespace App\Services\Templates;
 
 use Illuminate\Validation\ValidationException;
+use TrafficOps\Macros\StandaloneRenderer;
+use TrafficOps\Macros\Syntax;
 
 /** Compile request values to dependency-free PHP for the isolated landing runtime. */
 class TemplateRequestRuntime
 {
-    private const PATH = '[A-Za-z0-9_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*)*';
-
-    private const MACRO = '/(?<![\\\\{])(\\\\?)\{(query|headers|body)\.('.self::PATH.'|\*)\}(?!\})/';
+    public function macroPattern(bool $escaped = true): string
+    {
+        return Syntax::request()->pattern($escaped);
+    }
 
     public function hasRuntime(string $source): bool
     {
         $opaque = [];
         $source = TemplatePhpSource::protect($source, $opaque);
 
-        return preg_match(self::MACRO, $source) === 1
+        return preg_match($this->macroPattern(), $source) === 1
             || preg_match('/^\h*@(?:validation|endvalidation)\b/m', $source) === 1;
     }
 
@@ -63,11 +66,15 @@ class TemplateRequestRuntime
         [$markup, $blocks, $opaque] = $this->parse($source);
         $this->validateContexts($markup);
         $variable = '$__fl_request_'.substr(hash('sha256', $source), 0, 16);
-        $markup = preg_replace_callback(self::MACRO, static fn (array $match): string => $match[1] === '\\'
+        $markup = preg_replace_callback($this->macroPattern(), static fn (array $match): string => $match[1] === '\\'
             ? substr($match[0], 1)
-            : '<?php echo '.$variable.'('.var_export($match[2], true).', '.var_export($match[3], true).'); ?>', $markup);
+            : '<?php echo '.$variable.'('.var_export('{'.$match[2].'}', true).'); ?>', $markup);
         $markup = strtr($markup, $opaque);
-        $runtime = str_replace(['__REQUEST_RENDERER__', '__VALIDATION_BLOCKS__'], [$variable, var_export($blocks, true)], $this->runtime());
+        $runtime = strtr($this->runtime(), [
+            '__REQUEST_RENDERER__' => $variable,
+            '__VALIDATION_BLOCKS__' => var_export($blocks, true),
+            '__SHARED_RENDERER__' => StandaloneRenderer::source(),
+        ]);
 
         // PHP requires leading declare/namespace statements before executable code.
         $prefix = $this->phpDeclarationPrefix($markup);
@@ -108,7 +115,7 @@ class TemplateRequestRuntime
     /** HTML escaping is safe in text/quoted attributes, but not JS, CSS or arbitrary URLs. */
     private function validateContexts(string $markup): void
     {
-        if (preg_match(self::MACRO, $markup) !== 1) {
+        if (preg_match($this->macroPattern(), $markup) !== 1) {
             return;
         }
         $offset = 0;
@@ -180,7 +187,7 @@ class TemplateRequestRuntime
                 // Browsers retain the first occurrence of a duplicate attribute.
                 $attributes[strtolower($match[1][0])] ??= ['value' => $match[2][0], 'offset' => $match[2][1]];
             }
-            preg_match_all(self::MACRO, $tag, $macros, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+            preg_match_all($this->macroPattern(), $tag, $macros, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
             foreach ($macros as $macro) {
                 if ($macro[1][0] === '\\') {
                     continue;
@@ -217,7 +224,7 @@ class TemplateRequestRuntime
                 preg_match('~</'.preg_quote($tagName, '~').'\s*>~i', $markup, $closing, PREG_OFFSET_CAPTURE, $offset);
                 $contentEnd = $closing[0][1] ?? $size;
                 $content = substr($markup, $offset, $contentEnd - $offset);
-                preg_match_all(self::MACRO, $content, $macros, PREG_SET_ORDER);
+                preg_match_all($this->macroPattern(), $content, $macros, PREG_SET_ORDER);
                 foreach ($macros as $macro) {
                     if ($macro[1] !== '\\') {
                         $this->fail(substr_count(substr($markup, 0, $start), "\n") + 1, 'Runtime macros inside script or style require a quoted HTML data attribute instead.');
@@ -299,7 +306,7 @@ class TemplateRequestRuntime
         $arguments = $this->arguments($text, $line);
         $path = array_shift($arguments);
         $type = array_shift($arguments);
-        if (! is_string($path) || ! preg_match('/^'.self::PATH.'$/D', $path)) {
+        if (! is_string($path) || $path === '*' || Syntax::request()->whole('{body.'.$path.'}') === null) {
             $this->fail($line, 'A request parameter needs a name or dotted path.');
         }
         if (! in_array($type, ['String', 'Number', 'Integer', 'Boolean'], true)) {
@@ -433,27 +440,12 @@ __REQUEST_RENDERER__ = (static function (): \Closure {
         $body = $invalidBody ? [] : $body;
     }
     $sources = ['query' => $_GET, 'headers' => $headers, 'body' => $body];
-    $lookup = static function (array|\stdClass $values, string $path): mixed {
-        if ($path === '*') {
-            return $values;
-        }
-        foreach (explode('.', $path) as $part) {
-            if ($values instanceof \stdClass) {
-                $values = get_object_vars($values);
-            }
-            if (! is_array($values) || ! array_key_exists($part, $values)) {
-                return null;
-            }
-            $values = $values[$part];
-        }
-
-        return $values;
-    };
+    $renderer = (__SHARED_RENDERER__)($sources);
     foreach (__VALIDATION_BLOCKS__ as $block) {
         $valid = ! ($block['source'] === 'body' && $invalidBody);
         foreach ($block['params'] as $rule) {
             $path = $block['source'] === 'headers' ? strtolower($rule['path']) : $rule['path'];
-            $value = $lookup($sources[$block['source']], $path);
+            $value = $renderer->value($block['source'], $path);
             if ($value === null || (is_string($value) && trim($value) === '')) {
                 $valid = $valid && ! $rule['required'];
                 continue;
@@ -490,17 +482,7 @@ __REQUEST_RENDERER__ = (static function (): \Closure {
         }
     }
 
-    return static function (string $source, string $path) use ($sources, $lookup): string {
-        $value = $lookup($sources[$source], $source === 'headers' ? strtolower($path) : $path);
-        $text = match (true) {
-            $value === null => '',
-            is_bool($value) => $value ? 'true' : 'false',
-            is_array($value) || $value instanceof \stdClass => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR),
-            default => (string) $value,
-        };
-
-        return htmlspecialchars($text === false ? '' : $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    };
+    return static fn (string $template): string => $renderer->render($template);
 })();
 
 PHP;

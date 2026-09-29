@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\UserRole;
 use App\Livewire\Files\Editor;
+use App\Livewire\Landings\Show;
 use App\Models\Landing;
 use App\Models\LandingRelease;
 use App\Models\LandingTemplate;
@@ -148,7 +149,53 @@ class FileEditorTest extends TestCase
         $this->assertDatabaseCount('landing_releases', 1);
     }
 
-    public function test_raw_landing_edits_clear_the_visual_template_snapshot_only_on_the_new_release(): void
+    public function test_template_landing_editor_warns_that_publishing_detaches_from_template(): void
+    {
+        $template = $this->template();
+        $landing = app(TemplateLandingService::class)->create($template, [
+            'name' => 'Template landing', 'slug' => 'template-landing',
+        ], ['title' => 'Snapshot title'], [], $this->administrator);
+        $release = $landing->activeRelease;
+
+        $editor = Livewire::test(Editor::class, ['release' => $release])
+            ->assertSee('Detach from template')
+            ->call('selectFile', 'index.html')
+            ->call('saveFile', '<h1>Custom HTML</h1>');
+
+        $editor->call('publish')->assertHasErrors('detachFromTemplate');
+        $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+
+        $editor->call('publishDetachingFromTemplate')->assertHasNoErrors();
+        $this->assertNotSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertNull($landing->fresh()->landing_template_id);
+    }
+
+    public function test_files_of_an_inactive_release_cannot_be_drafted_until_it_is_activated(): void
+    {
+        $old = $this->release();
+        $landing = $old->landing;
+        $active = app(LandingArchiveService::class)->deploy($landing, $this->archive(['index.html' => '<h1>Current</h1>']), $this->administrator);
+
+        $this->get(route('landings.files', $old))
+            ->assertRedirect(route('landings.show', $landing))
+            ->assertSessionHasErrors(['release' => 'Activate this release first.']);
+        $this->assertDatabaseCount('landing_releases', 2);
+
+        Livewire::test(Show::class, ['landing' => $landing])
+            ->assertSee('Activate this release first')
+            ->assertSeeHtml(route('landings.files', $active))
+            ->assertDontSeeHtml(route('landings.files', $old));
+    }
+
+    public function test_file_landing_editor_does_not_mention_detaching(): void
+    {
+        Livewire::test(Editor::class, ['release' => $this->release()])
+            ->assertDontSee('Detach from template')
+            ->assertSee('Save and activate');
+    }
+
+    public function test_detach_from_template_clears_the_template_snapshot_only_on_the_new_release(): void
     {
         $template = $this->template();
         $landing = app(TemplateLandingService::class)->create($template, [
@@ -159,7 +206,7 @@ class FileEditorTest extends TestCase
         Livewire::test(Editor::class, ['release' => $release])
             ->call('selectFile', 'index.html')
             ->call('saveFile', '<h1>Custom HTML</h1>')
-            ->call('publish')
+            ->call('publishDetachingFromTemplate')
             ->assertHasNoErrors();
 
         $landing->refresh();

@@ -54,8 +54,8 @@
                     @include('templates.macro-input')
                 @elseif ($fieldType === 'select')
                     <select id="{{ $fieldId }}" wire:model.live="{{ $valuePath }}" class="d-select d-select-bordered w-full" @required($field['required'] ?? false) aria-describedby="{{ $fieldId }}-help {{ $fieldId }}-error" aria-invalid="{{ $errors->has($valuePath) ? 'true' : 'false' }}">
-                        @unless (array_key_exists('', $field['options']))<option value="" disabled>Select an option</option>@endunless
-                        @foreach ($field['options'] as $optionValue => $optionLabel)<option value="{{ $optionValue }}">{{ $optionLabel }}</option>@endforeach
+                        @unless (array_key_exists('', $field['options']))<option value="" @disabled($field['required'] ?? false) @selected($fieldValue === '' || $fieldValue === null)>Select an option</option>@endunless
+                        @foreach ($field['options'] as $optionValue => $optionLabel)<option value="{{ $optionValue }}" @selected((string) $fieldValue === (string) $optionValue)>{{ $optionLabel }}</option>@endforeach
                     </select>
                 @elseif ($fieldType === 'color')
                     @php

@@ -58,6 +58,8 @@ class DomainManager
             'kind' => DomainKind::System,
             'provider' => DomainProvider::System,
             'status' => DomainStatus::Active,
+            // System subdomains are trusted unconditionally: Active, hence verified, at creation.
+            'verified_at' => now(),
             'dns_target' => $this->normalizeTarget($installation->origin_target),
             'last_checked_at' => now(),
             'last_error' => null,
@@ -65,10 +67,8 @@ class DomainManager
     }
 
     /**
-     * Create a custom domain whose DNS is managed by the administrator.
-     *
-     * `verification_token` is deliberately left unused: an A, AAAA, or CNAME
-     * pointing to the installation origin proves control of the domain's DNS.
+     * Create a custom domain whose DNS is managed by the administrator. An A,
+     * AAAA, or CNAME pointing to the origin target proves control of the domain.
      */
     public function createManual(
         ?Landing $landing,
@@ -91,7 +91,6 @@ class DomainManager
             'provider' => DomainProvider::Dns,
             'status' => DomainStatus::Pending,
             'dns_target' => $target,
-            'verification_token' => null,
             'cloudflare_domain_id' => null,
             'last_checked_at' => null,
             'last_error' => null,
@@ -189,7 +188,6 @@ class DomainManager
                     'provider' => DomainProvider::Cloudflare,
                     'status' => DomainStatus::Pending,
                     'dns_target' => $target,
-                    'verification_token' => null,
                     'cloudflare_domain_id' => null,
                     'last_checked_at' => null,
                     'last_error' => null,
@@ -199,10 +197,19 @@ class DomainManager
                     $installation,
                     $integrationId,
                     $zoneId,
-                    new DomainDefinition($hostname, $expectations),
+                    new DomainDefinition($hostname, [$expectations[0]]),
                 );
 
-                $domain->update(['cloudflare_domain_id' => $remote->id]);
+                $wildcardClaim = $wildcard ? $this->cloudflare->attachDomain(
+                    $installation,
+                    $integrationId,
+                    $zoneId,
+                    new DomainDefinition('*.'.$hostname, [$expectations[1]]),
+                ) : null;
+                $domain->update([
+                    'cloudflare_domain_id' => $remote->id,
+                    'cloudflare_wildcard_domain_id' => $wildcardClaim?->id,
+                ]);
 
                 return $domain->refresh();
             });
@@ -242,7 +249,6 @@ class DomainManager
                 'provider' => $base->provider,
                 'status' => DomainStatus::Pending,
                 'dns_target' => $base->dns_target,
-                'verification_token' => null,
                 'cloudflare_domain_id' => null,
                 'last_checked_at' => null,
                 'last_error' => null,
@@ -348,25 +354,22 @@ class DomainManager
     /** Check the exact child hostname: explicit DNS records can override a wildcard. */
     public function checkInherited(Domain $domain): Domain
     {
-        $domain = Domain::query()->with('parentDomain.cloudflareDomain.records')->findOrFail($domain->getKey());
+        $domain = Domain::query()->with(['parentDomain.cloudflareDomain.records', 'parentDomain.cloudflareWildcardDomain.records'])->findOrFail($domain->getKey());
         $base = $domain->parentDomain;
         if ($base === null || $base->dns_scope !== 'wildcard') {
             throw new LogicException('The subdomain has no connected wildcard DNS source.');
         }
         if ($base->status !== DomainStatus::Active) {
-            $domain->update([
-                'status' => $base->status,
+            return $domain->transitionTo($base->status, [
                 'last_checked_at' => now(),
                 'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
             ]);
-
-            return $domain->refresh();
         }
 
         try {
             $proxied = false;
             if ($base->provider === DomainProvider::Cloudflare) {
-                $wildcard = $base->cloudflareDomain?->records
+                $wildcard = ($base->cloudflareWildcardDomain ?? $base->cloudflareDomain)?->records
                     ->where('desired', true)->firstWhere('name', '*.'.$base->hostname);
                 if ($wildcard === null) {
                     throw new LogicException('The parent Cloudflare domain has no wildcard DNS expectation.');
@@ -390,13 +393,10 @@ class DomainManager
             // the earlier active snapshot used to start this child check.
             $base = Domain::query()->lockForUpdate()->findOrFail($base->getKey());
             if ($base->status !== DomainStatus::Active) {
-                $domain->update([
-                    'status' => $base->status,
+                return $domain->transitionTo($base->status, [
                     'last_checked_at' => now(),
                     'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
                 ]);
-
-                return $domain->refresh();
             }
 
             return $this->applyDnsResults($domain, [$result]);
@@ -407,23 +407,24 @@ class DomainManager
     private function applyDnsResults(Domain $domain, array $results): Domain
     {
         $result = collect($results)->first(fn (array $result): bool => $result['status'] !== 'matched') ?? $results[0];
+        // DNS that no longer points at the origin target is Drifted only for a
+        // verified domain; a never-verified domain is still propagating. Deriving
+        // this from verification (not from the previous status) means a transient
+        // Unreachable/Error between two checks cannot hide a real drift (ADR-0003).
         $status = match ($result['status']) {
             'matched' => DomainStatus::Active,
-            'missing', 'mismatched' => in_array($domain->status, [DomainStatus::Active, DomainStatus::Drifted], true)
+            'missing', 'mismatched' => $domain->verified_at !== null
                 ? DomainStatus::Drifted
                 : DomainStatus::PendingPropagation,
             default => DomainStatus::PendingPropagation,
         };
 
-        $domain->update([
-            'status' => $status,
+        return $domain->transitionTo($status, [
             'last_checked_at' => now(),
             'last_error' => $status === DomainStatus::Active
                 ? null
                 : "Public DNS is {$result['status']} for [{$result['name']}].",
         ]);
-
-        return $domain->refresh();
     }
 
     /** Alias matching the provider name used by the UI and database. */
@@ -467,8 +468,7 @@ class DomainManager
             return;
         }
 
-        $base->subdomains()->update([
-            'status' => $base->status,
+        Domain::transition($base->subdomains(), $base->status, [
             'last_checked_at' => $base->last_checked_at,
             'last_error' => 'Verify wildcard DNS for ['.$base->hostname.'] first.',
         ]);
@@ -482,17 +482,23 @@ class DomainManager
         try {
             $result = $this->withCloudflareLock(
                 $integrationId,
-                fn (): ProvisionResult => $this->cloudflare->reconcileDomain(
-                    $installation,
-                    (string) $domain->cloudflare_domain_id,
-                ),
+                function () use ($domain, $installation): ProvisionResult {
+                    $results = array_map(
+                        fn (string $id): ProvisionResult => $this->cloudflare->reconcileDomain($installation, $id),
+                        $domain->cloudflareClaimIds(),
+                    );
+
+                    return new ProvisionResult(
+                        (string) $domain->cloudflare_domain_id,
+                        array_sum(array_column($results, 'created')),
+                        array_sum(array_column($results, 'updated')),
+                        array_sum(array_column($results, 'adopted')),
+                        array_sum(array_column($results, 'deleted')),
+                    );
+                },
             );
 
-            $domain->update([
-                'status' => DomainStatus::Pending,
-                'last_error' => null,
-            ]);
-            $this->refreshSubdomains($domain->refresh());
+            $this->refreshSubdomains($domain->transitionTo(DomainStatus::Pending, ['last_error' => null]));
 
             return $result;
         } catch (Throwable $exception) {
@@ -522,7 +528,7 @@ class DomainManager
         $this->applyCloudflareStatuses($result, $integrationId);
 
         $checked = Domain::query()->findOrFail($domain->getKey());
-        if (! collect($result->domains)->contains(fn (DomainData $item): bool => $item->id === $checked->cloudflare_domain_id)) {
+        if (array_diff($checked->cloudflareClaimIds(), array_column($result->domains, 'id')) !== []) {
             $exception = new LogicException('The Cloudflare domain is missing from its integration check.');
             $this->markFailure($checked, DomainStatus::Error, $exception);
             throw $exception;
@@ -560,10 +566,11 @@ class DomainManager
     }
 
     /**
-     * Remove a local hostname and, when requested, only DNS records that the
-     * Cloudflare package itself created. Adopted records are never deleted.
+     * Remove a domain from the panel. Managed DNS records are kept unless the
+     * operator explicitly asks for cleanup, and even then only records that the
+     * Cloudflare package itself created are deleted; adopted records never are.
      */
-    public function remove(Domain $domain, bool $cleanupManagedRecords = true): void
+    public function remove(Domain $domain, bool $cleanupManagedRecords = false): void
     {
         $domain = Domain::query()
             ->with('cloudflareDomain.zone.account.integration')
@@ -608,14 +615,12 @@ class DomainManager
 
                 if ($locked->provider === DomainProvider::Cloudflare && $locked->cloudflare_domain_id !== null) {
                     $cleanupAttempted = $cleanupManagedRecords;
-                    try {
-                        $this->cloudflare->removeDomain(
-                            Installation::singleton(),
-                            (string) $locked->cloudflare_domain_id,
-                            $cleanupManagedRecords,
-                        );
-                    } catch (CloudflareNotFoundException) {
-                        // The remote package state was already removed; finish local cleanup.
+                    foreach ($locked->cloudflareClaimIds() as $claimId) {
+                        try {
+                            $this->cloudflare->removeDomain(Installation::singleton(), $claimId, $cleanupManagedRecords);
+                        } catch (CloudflareNotFoundException) {
+                            // One claim may already be gone; still remove the other.
+                        }
                     }
                 }
 
@@ -633,7 +638,9 @@ class DomainManager
             } catch (Throwable $exception) {
                 if ($cleanupAttempted) {
                     // Remote deletes cannot roll back with our transaction. Keep
-                    // the binding for retry, but stop advertising it as verified.
+                    // the binding for retry, but require a successful DNS check
+                    // before serving again: records may already have been deleted.
+                    $domain->update(['drifted_at' => now()]);
                     $this->markFailure($domain, $this->failureStatus($exception), $exception);
                 }
 
@@ -853,26 +860,39 @@ class DomainManager
 
     private function applyCloudflareStatuses(CheckResult $result, string $integrationId): void
     {
-        $returnedIds = collect($result->domains)->map(fn (DomainData $domain): string => $domain->id)->all();
+        $claims = collect($result->domains)->keyBy('id');
 
-        DB::transaction(function () use ($result, $integrationId, $returnedIds): void {
-            foreach ($result->domains as $remote) {
-                Domain::query()->where('cloudflare_domain_id', $remote->id)->update([
-                    'status' => $this->mapCloudflareStatus($remote->status),
-                    'last_checked_at' => $remote->lastCheckedAt ?? now(),
-                    'last_error' => null,
-                ]);
-            }
-
-            Domain::query()
-                ->where('provider', DomainProvider::Cloudflare)
+        DB::transaction(function () use ($claims, $integrationId): void {
+            Domain::query()->where('provider', DomainProvider::Cloudflare)
                 ->whereHas('cloudflareDomain.zone.account', fn ($query) => $query->where('integration_id', $integrationId))
-                ->whereNotIn('cloudflare_domain_id', $returnedIds)
-                ->update([
-                    'status' => DomainStatus::Error,
-                    'last_checked_at' => now(),
-                    'last_error' => 'The Cloudflare domain is missing from its integration check.',
-                ]);
+                ->each(function (Domain $domain) use ($claims): void {
+                    $remote = collect($domain->cloudflareClaimIds())->map(fn (string $id) => $claims->get($id));
+                    if ($remote->contains(null)) {
+                        $domain->transitionTo(DomainStatus::Error, [
+                            'last_checked_at' => now(),
+                            'last_error' => 'The Cloudflare domain is missing from its integration check.',
+                        ]);
+
+                        return;
+                    }
+                    $statuses = $remote->map(function (DomainData $claim) use ($domain): DomainStatus {
+                        $status = $this->mapCloudflareStatus($claim->status);
+
+                        return $status === DomainStatus::PendingPropagation && $domain->verified_at !== null
+                            ? DomainStatus::Drifted
+                            : $status;
+                    });
+                    // A proven mismatch wins over a transient failure of the other
+                    // claim. Both independent claims must match to verify the base.
+                    $status = collect([
+                        DomainStatus::Drifted, DomainStatus::Error, DomainStatus::Unreachable,
+                        DomainStatus::Pending, DomainStatus::PendingPropagation, DomainStatus::Active,
+                    ])->first(fn (DomainStatus $status) => $statuses->contains($status));
+                    $domain->transitionTo($status, [
+                        'last_checked_at' => now(),
+                        'last_error' => null,
+                    ]);
+                });
         });
 
         Domain::query()->where('provider', DomainProvider::Cloudflare)
@@ -902,12 +922,10 @@ class DomainManager
 
     private function markFailure(Domain $domain, DomainStatus $status, Throwable $exception): void
     {
-        Domain::query()->whereKey($domain->getKey())->update([
-            'status' => $status,
+        $this->refreshSubdomains($domain->transitionTo($status, [
             'last_checked_at' => now(),
             'last_error' => DomainError::message($exception),
-        ]);
-        $this->refreshSubdomains($domain->refresh());
+        ]));
     }
 
     private function withCloudflareLock(string $integrationId, Closure $callback): mixed

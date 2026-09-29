@@ -78,8 +78,7 @@ class DomainChecks
                 $message = DomainError::display($domain->last_error);
             }
 
-            $domain->update([
-                'status' => DomainStatus::Error,
+            $domain->transitionTo(DomainStatus::Error, [
                 'last_checked_at' => now(),
                 'last_error' => $message,
                 'verification_requested_at' => null,
@@ -87,8 +86,7 @@ class DomainChecks
                 'next_check_at' => now()->addSeconds((int) config('fast-landings.domain_checks.error_interval', 300)),
             ]);
             if ($domain->dns_scope === 'wildcard') {
-                $domain->subdomains()->update([
-                    'status' => DomainStatus::Error,
+                Domain::transition($domain->subdomains(), DomainStatus::Error, [
                     'last_checked_at' => now(),
                     'last_error' => 'Verify wildcard DNS for ['.$domain->hostname.'] first.',
                 ]);

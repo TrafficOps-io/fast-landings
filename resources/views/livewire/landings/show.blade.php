@@ -31,15 +31,24 @@
                         @endif
                     </div>
                 </div>
-                <form wire:submit="deploy" class="flex flex-col gap-3 rounded-box border border-dashed border-base-300 bg-base-200/40 p-4 sm:flex-row sm:items-end">
-                    <label class="grid min-w-0 flex-1 gap-1.5">
-                        <span class="text-sm font-medium">{{ $landing->template_values !== null ? 'Replace with ZIP archive' : 'Deploy new ZIP' }}</span>
-                        <input wire:model="archive" type="file" accept=".zip,application/zip" class="d-file-input d-file-input-bordered w-full" required>
-                    </label>
-                    <button type="submit" class="d-btn d-btn-primary" wire:loading.attr="disabled" wire:target="archive,deploy">
-                        <span class="d-loading d-loading-spinner d-loading-sm" wire:loading wire:target="archive,deploy"></span>
-                        Deploy
-                    </button>
+                <form wire:submit="deploy" class="flex flex-col gap-3 rounded-box border border-dashed border-base-300 bg-base-200/40 p-4">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <label class="grid min-w-0 flex-1 gap-1.5">
+                            <span class="text-sm font-medium">{{ $landing->template_values !== null ? 'Replace with ZIP archive' : 'Deploy new ZIP' }}</span>
+                            <input wire:model="archive" type="file" accept=".zip,application/zip" class="d-file-input d-file-input-bordered w-full" required>
+                        </label>
+                        <button type="submit" class="d-btn d-btn-primary" wire:loading.attr="disabled" wire:target="archive,deploy">
+                            <span class="d-loading d-loading-spinner d-loading-sm" wire:loading wire:target="archive,deploy"></span>
+                            Deploy
+                        </button>
+                    </div>
+                    @if ($landing->template)
+                        <label class="flex items-start gap-2 text-sm">
+                            <input wire:model="detachFromTemplate" type="checkbox" class="d-checkbox d-checkbox-sm mt-0.5" @error('detachFromTemplate') aria-invalid="true" @enderror>
+                            <span><strong>Detach from template.</strong> This is a template landing: deploying a ZIP makes it a file landing whose content is no longer edited through template values. The previous release keeps its template snapshot; activate it to return to the template.</span>
+                        </label>
+                        @error('detachFromTemplate')<span class="text-sm text-error" role="alert">{{ $message }}</span>@enderror
+                    @endif
                 </form>
             </x-ui::panel>
             <x-ui::panel title="Releases" description="Activate a previous release to restore its content and template settings.">
@@ -55,8 +64,10 @@
                                 <td><x-ui::status-badge :label="$release->is_active ? 'Active' : 'Inactive'" :tone="$release->is_active ? 'success' : 'neutral'" /></td>
                                 <td class="text-right">
                                     <a href="{{ route('landings.download', ['release' => $release]) }}" class="d-btn d-btn-ghost d-btn-xs" aria-label="Download ZIP for {{ $release->original_name }}" download>Download ZIP</a>
-                                    <a href="{{ route('landings.files', $release) }}" class="d-btn d-btn-ghost d-btn-xs" wire:navigate>Files</a>
-                                    @if (! $release->is_active)
+                                    @if ($release->is_active)
+                                        <a href="{{ route('landings.files', $release) }}" class="d-btn d-btn-ghost d-btn-xs" wire:navigate>Files</a>
+                                    @else
+                                        <span class="d-btn d-btn-ghost d-btn-xs d-btn-disabled" aria-disabled="true" title="Activate this release first to edit its files">Files</span>
                                         <button class="d-btn d-btn-ghost d-btn-xs" wire:click="activate('{{ $release->id }}')">Activate</button>
                                         <button class="d-btn d-btn-ghost d-btn-xs text-error" wire:click="deleteRelease('{{ $release->id }}')" wire:confirm="Delete this release permanently?">Delete</button>
                                     @endif

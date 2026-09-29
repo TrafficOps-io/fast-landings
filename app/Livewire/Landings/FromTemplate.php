@@ -60,11 +60,11 @@ class FromTemplate extends Component
 
         $tags = $this->validateTags();
 
-        $landing = $landings->create($this->template, $attributes, $this->values, $this->uploads, $user);
+        $landing = $landings->create($this->template, $attributes, $this->values, $this->uploads, $user, $warnings);
 
         $landing->syncTags($tags);
 
-        session()->flash('saved', 'Landing created from template. Add a system or custom domain to publish it.');
+        session()->flash('saved', $this->savedTemplateMessage('Landing created from template. Add a system or custom domain to publish it.', $warnings));
         $this->redirectRoute('landings.show', $landing, navigate: true);
     }
 

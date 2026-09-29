@@ -8,6 +8,7 @@ use App\Enums\DomainStatus;
 use App\Models\Domain;
 use App\Models\Installation;
 use App\Models\Landing;
+use App\Models\LandingRelease;
 use App\Services\DomainManager;
 use Closure;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
@@ -466,15 +467,15 @@ class DomainManagerTest extends TestCase
     {
         [$integrationId, $zoneId] = $this->cloudflareTree();
         $this->expectZones($integrationId, [ZoneData::fromModel(CloudflareZone::findOrFail($zoneId))]);
-        $this->cloudflare->shouldReceive('attachDomain')->once()
+        $this->cloudflare->shouldReceive('attachDomain')->twice()
             ->withArgs(fn ($owner, $integration, $zone, DomainDefinition $definition): bool => $integration === $integrationId
-                && $zone === $zoneId && $definition->hostname === 'example.com'
-                && array_column($definition->records, 'name') === ['example.com', '*.example.com']
-                && $definition->records[0]->proxied === $proxied && $definition->records[1]->proxied === $proxied)
+                && $zone === $zoneId && in_array($definition->hostname, ['example.com', '*.example.com'], true)
+                && array_column($definition->records, 'name') === [$definition->hostname]
+                && $definition->records[0]->proxied === $proxied)
             ->andReturnUsing(function ($owner, $integration, $zone, DomainDefinition $definition): DomainData {
                 $remote = CloudflareDomain::query()->create([
                     'zone_id' => $zone, 'hostname' => $definition->hostname,
-                    'kind' => 'exact', 'status' => CloudflareDomainStatus::Pending,
+                    'kind' => $definition->isWildcard() ? 'wildcard' : 'exact', 'status' => CloudflareDomainStatus::Pending,
                 ]);
                 foreach ($definition->records as $record) {
                     $remote->records()->create([...$record->toArray(), 'signature' => $record->signature()]);
@@ -486,12 +487,13 @@ class DomainManagerTest extends TestCase
         $child = $this->manager->createSubdomain($base, null, 'offer');
         $this->assertNull($child->cloudflare_domain_id);
         $this->assertSame($base->id, $child->dnsSource()->id);
-        $this->assertDatabaseCount('cloudflare_domains', 1);
+        $this->assertDatabaseCount('cloudflare_domains', 2);
         $this->assertDatabaseCount('cloudflare_domain_records', 2);
 
         $this->cloudflare->shouldReceive('checkIntegration')->once()
             ->andReturn(new CheckResult($integrationId, IntegrationStatus::Active, [
                 new DomainData($base->cloudflare_domain_id, 'example.com', 'exact', CloudflareDomainStatus::Active, now()),
+                new DomainData($base->cloudflare_wildcard_domain_id, '*.example.com', 'wildcard', CloudflareDomainStatus::Active, now()),
             ]));
         $this->manager->checkCloudflare($base);
         $type = $proxied ? 'A' : 'CNAME';
@@ -546,6 +548,124 @@ class DomainManagerTest extends TestCase
         $this->assertSame(DomainStatus::Drifted, $drifted->status);
         $this->assertNotNull($drifted->last_checked_at);
         $this->assertStringContainsString('mismatched', $drifted->last_error);
+    }
+
+    public function test_domain_becomes_verified_the_first_time_a_check_finds_it_active(): void
+    {
+        $domain = $this->manager->createManual($this->landing('Manual'), 'promo.example.com');
+        $this->assertNull($domain->verified_at);
+
+        $this->manager->checkManual($domain);
+        $this->assertNull($domain->refresh()->verified_at);
+        $this->assertSame(DomainStatus::PendingPropagation, $domain->status);
+
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $verifiedAt = $this->manager->checkManual($domain)->verified_at;
+        $this->assertNotNull($verifiedAt);
+
+        $this->resolver->answers['promo.example.com:CNAME'] = ['other.example.com'];
+        $drifted = $this->manager->checkManual($domain);
+        $this->assertSame(DomainStatus::Drifted, $drifted->status);
+        $this->assertTrue($verifiedAt->equalTo($drifted->verified_at), 'Verification is recorded once and never cleared.');
+    }
+
+    public function test_verified_domain_that_loses_dns_after_a_transient_failure_is_drifted_and_not_served(): void
+    {
+        $domain = $this->manager->createManual($this->publishedLanding('Steady'), 'promo.example.com');
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($domain);
+        $this->assertTrue($this->isServed($domain));
+
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+        try {
+            $this->manager->checkManual($domain);
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+        $this->assertTrue($this->isServed($domain), 'A transient failure does not stop serving.');
+
+        $this->resolver->onResolve = null;
+        $this->resolver->answers['promo.example.com:CNAME'] = [];
+        $this->assertSame(DomainStatus::Drifted, $this->manager->checkManual($domain)->status, 'Drift is derived from verification, not from the previous status.');
+        $this->assertFalse($this->isServed($domain));
+    }
+
+    public function test_verified_child_domain_that_loses_dns_after_the_base_failed_transiently_is_drifted(): void
+    {
+        $base = $this->manager->createManual(null, 'example.com', wildcard: true);
+        $child = $this->manager->createSubdomain($base, $this->publishedLanding('Offer'), 'offer');
+        $probe = Hostname::wildcardProbe('*.example.com', $base->id);
+        $this->resolver->answers['example.com:CNAME'] = ['origin.landings.test'];
+        $this->resolver->answers[$probe.':CNAME'] = ['origin.landings.test'];
+        $this->resolver->answers['offer.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($base);
+        $this->assertSame(DomainStatus::Active, $this->manager->checkDns($child)->status);
+        $this->assertNotNull($child->refresh()->verified_at, 'A child verified by its own check records verified_at.');
+        $this->assertTrue($this->isServed($child));
+
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+        try {
+            $this->manager->checkManual($base);
+        } catch (\RuntimeException) {
+        }
+        $this->assertSame(DomainStatus::Unreachable, $child->refresh()->status, 'The base failure is copied onto its children.');
+        $this->assertTrue($this->isServed($child));
+
+        $this->resolver->onResolve = null;
+        $this->manager->checkManual($base);
+        $this->resolver->answers['offer.example.com:CNAME'] = ['elsewhere.example.net'];
+        $this->assertSame(DomainStatus::Drifted, $this->manager->checkDns($child)->status);
+        $this->assertFalse($this->isServed($child));
+    }
+
+    public function test_verified_domain_stays_verified_through_an_unreachable_check(): void
+    {
+        $domain = $this->manager->createManual($this->landing('Manual'), 'promo.example.com');
+        $this->resolver->answers['promo.example.com:CNAME'] = ['origin.landings.test'];
+        $this->manager->checkManual($domain);
+        $this->resolver->onResolve = fn () => throw new \RuntimeException('resolver timeout');
+
+        try {
+            $this->manager->checkManual($domain);
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+        $this->assertNotNull($domain->verified_at);
+    }
+
+    public function test_system_domains_are_verified_on_creation(): void
+    {
+        $domain = $this->manager->createSystem($this->landing('System'), 'offer');
+
+        $this->assertNotNull($domain->refresh()->verified_at);
+    }
+
+    public function test_cloudflare_check_marks_the_domain_verified_when_active(): void
+    {
+        [$integrationId, $zoneId] = $this->cloudflareTree();
+        $remote = CloudflareDomain::query()->create([
+            'zone_id' => $zoneId, 'hostname' => 'promo.example.com', 'kind' => 'exact', 'status' => CloudflareDomainStatus::Pending,
+        ]);
+        $domain = Domain::query()->create([
+            'landing_id' => $this->landing('Cloudflare')->getKey(),
+            'hostname' => 'promo.example.com',
+            'kind' => DomainKind::Custom,
+            'provider' => DomainProvider::Cloudflare,
+            'status' => DomainStatus::Pending,
+            'is_primary' => true,
+            'dns_target' => 'origin.landings.test',
+            'cloudflare_domain_id' => $remote->id,
+        ]);
+        $this->assertNull($domain->verified_at);
+        $this->cloudflare->shouldReceive('checkIntegration')->once()->andReturn(new CheckResult($integrationId, IntegrationStatus::Active, [
+            new DomainData($remote->id, 'promo.example.com', 'exact', CloudflareDomainStatus::Active, now()),
+        ]));
+
+        $checked = $this->manager->checkCloudflare($domain);
+
+        $this->assertSame(DomainStatus::Active, $checked->status);
+        $this->assertNotNull($checked->verified_at);
     }
 
     #[DataProvider('addressTargets')]
@@ -893,18 +1013,49 @@ class DomainManagerTest extends TestCase
         $this->cloudflare->shouldNotHaveReceived('removeDomain');
     }
 
-    public function test_remove_delegates_safe_managed_record_cleanup_for_cloudflare(): void
+    public function test_remove_keeps_cloudflare_managed_records_unless_cleanup_is_requested(): void
+    {
+        $domain = $this->cloudflareDomain('keep.example.com');
+
+        $this->cloudflare->shouldReceive('removeDomain')
+            ->once()
+            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
+                && $id === $domain->cloudflare_domain_id
+                && ! $cleanup);
+
+        $this->manager->remove($domain);
+
+        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
+    }
+
+    public function test_remove_delegates_safe_managed_record_cleanup_for_cloudflare_when_explicitly_requested(): void
+    {
+        $domain = $this->cloudflareDomain('remove.example.com');
+
+        $this->cloudflare->shouldReceive('removeDomain')
+            ->once()
+            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
+                && $id === $domain->cloudflare_domain_id
+                && $cleanup);
+
+        $this->manager->remove($domain, cleanupManagedRecords: true);
+
+        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
+    }
+
+    private function cloudflareDomain(string $hostname): Domain
     {
         [, $zoneId] = $this->cloudflareTree();
         $remote = CloudflareDomain::query()->create([
             'zone_id' => $zoneId,
-            'hostname' => 'remove.example.com',
+            'hostname' => $hostname,
             'kind' => 'exact',
             'status' => CloudflareDomainStatus::Active,
         ]);
-        $domain = Domain::query()->create([
+
+        return Domain::query()->create([
             'landing_id' => $this->landing('Cloudflare removal')->getKey(),
-            'hostname' => 'remove.example.com',
+            'hostname' => $hostname,
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Cloudflare,
             'status' => DomainStatus::Active,
@@ -912,16 +1063,6 @@ class DomainManagerTest extends TestCase
             'dns_target' => 'origin.landings.test',
             'cloudflare_domain_id' => $remote->getKey(),
         ]);
-
-        $this->cloudflare->shouldReceive('removeDomain')
-            ->once()
-            ->withArgs(fn (Installation $owner, string $id, bool $cleanup): bool => $owner->is($this->installation)
-                && $id === $remote->getKey()
-                && $cleanup);
-
-        $this->manager->remove($domain);
-
-        $this->assertDatabaseMissing('domains', ['id' => $domain->getKey()]);
     }
 
     public function test_partial_cloudflare_cleanup_failure_keeps_the_binding_retryable_without_claiming_active_dns(): void
@@ -930,11 +1071,11 @@ class DomainManagerTest extends TestCase
         $remote = CloudflareDomain::query()->create([
             'zone_id' => $zoneId, 'hostname' => 'example.com', 'kind' => 'exact', 'status' => CloudflareDomainStatus::Active,
         ]);
-        $landing = $this->landing('Cleanup retry');
+        $landing = $this->publishedLanding('Cleanup retry');
         $domain = Domain::query()->create([
             'landing_id' => $landing->id, 'hostname' => 'example.com', 'dns_scope' => 'wildcard',
             'kind' => DomainKind::Custom, 'provider' => DomainProvider::Cloudflare,
-            'status' => DomainStatus::Active, 'is_primary' => true, 'dns_target' => 'origin.landings.test',
+            'status' => DomainStatus::Active, 'verified_at' => now(), 'is_primary' => true, 'dns_target' => 'origin.landings.test',
             'cloudflare_domain_id' => $remote->id,
         ]);
         $replacement = $this->manager->createManual($landing, 'backup.other.test');
@@ -951,6 +1092,7 @@ class DomainManagerTest extends TestCase
             $this->fail('A partial remote cleanup failure was swallowed.');
         } catch (CloudflareTransportException) {
             $this->assertSame(DomainStatus::Unreachable, $domain->refresh()->status);
+            $this->assertFalse($this->isServed($domain));
             $this->assertSame($remote->id, $domain->cloudflare_domain_id);
             $this->assertTrue($domain->is_primary);
             $this->assertFalse($replacement->refresh()->is_primary);
@@ -971,6 +1113,45 @@ class DomainManagerTest extends TestCase
             'description' => null,
             'is_active' => true,
         ]);
+    }
+
+    /** A published landing with an active release, i.e. one that can be served. */
+    private function publishedLanding(string $name): Landing
+    {
+        $landing = $this->landing($name);
+        LandingRelease::query()->create([
+            'landing_id' => $landing->id,
+            'original_name' => 'landing.zip',
+            'storage_path' => $landing->id.'/releases/'.Str::ulid(),
+            'entrypoint' => 'index.html',
+            'size_bytes' => 1,
+            'file_count' => 1,
+            'checksum' => str_repeat('a', 64),
+            'is_active' => true,
+            'activated_at' => now(),
+        ]);
+
+        return $landing;
+    }
+
+    private function isServed(Domain $domain): bool
+    {
+        return Domain::query()->servable()->whereKey($domain->getKey())->exists();
+    }
+
+    public function test_a_transient_failure_cannot_reopen_a_domain_after_proven_drift(): void
+    {
+        $domain = $this->manager->createManual($this->publishedLanding('Drift history'), 'offer.example.com');
+        $domain->transitionTo(DomainStatus::Active);
+        $this->assertTrue($this->isServed($domain));
+        $domain->transitionTo(DomainStatus::Drifted);
+        $this->assertFalse($this->isServed($domain));
+        foreach ([DomainStatus::Unreachable, DomainStatus::Error, DomainStatus::PendingPropagation] as $status) {
+            $domain->transitionTo($status);
+            $this->assertFalse($this->isServed($domain));
+        }
+        $domain->transitionTo(DomainStatus::Active);
+        $this->assertTrue($this->isServed($domain));
     }
 
     /** @return array{string, string} */

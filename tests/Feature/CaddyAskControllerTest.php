@@ -29,6 +29,7 @@ class CaddyAskControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => DomainStatus::Active,
+            'verified_at' => now(),
             'is_primary' => true,
             'dns_target' => 'origin.fast-landings.test',
         ]);
@@ -75,6 +76,29 @@ class CaddyAskControllerTest extends TestCase
         foreach (['pending', 'unassigned', 'inactive', 'empty'] as $label) {
             $this->get("/internal/caddy/ask?token=private-caddy-token&domain={$label}.example.test")
                 ->assertNotFound();
+        }
+    }
+
+    public function test_verified_domain_keeps_its_certificate_while_unreachable_or_error(): void
+    {
+        $domain = $this->domain('steady.example.test', $this->landing('Steady', active: true, withRelease: true), DomainStatus::Active);
+
+        foreach ([DomainStatus::Unreachable, DomainStatus::Error] as $status) {
+            $domain->update(['status' => $status]);
+            $this->get('/internal/caddy/ask?token=private-caddy-token&domain=steady.example.test')->assertOk();
+        }
+
+        $domain->update(['status' => DomainStatus::Drifted]);
+        $this->get('/internal/caddy/ask?token=private-caddy-token&domain=steady.example.test')->assertNotFound();
+    }
+
+    public function test_never_verified_domain_is_denied_a_certificate_in_every_transient_status(): void
+    {
+        $domain = $this->domain('fresh.example.test', $this->landing('Fresh', active: true, withRelease: true), DomainStatus::Pending);
+
+        foreach ([DomainStatus::PendingPropagation, DomainStatus::Unreachable, DomainStatus::Error] as $status) {
+            $domain->update(['status' => $status]);
+            $this->get('/internal/caddy/ask?token=private-caddy-token&domain=fresh.example.test')->assertNotFound();
         }
     }
 
@@ -129,6 +153,7 @@ class CaddyAskControllerTest extends TestCase
             'kind' => DomainKind::Custom,
             'provider' => DomainProvider::Dns,
             'status' => $status,
+            'verified_at' => $status === DomainStatus::Active ? now() : null,
             'is_primary' => $landing !== null,
             'dns_target' => 'origin.fast-landings.test',
         ]);

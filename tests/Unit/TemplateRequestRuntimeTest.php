@@ -111,6 +111,18 @@ TPL);
         $this->assertSame(422, $status);
     }
 
+    public function test_validation_literals_cannot_be_replaced_by_runtime_export_markers(): void
+    {
+        [$output, $status] = $this->execute(<<<'TPL'
+@validation query
+  @param reference String required mask="__SHARED_RENDERER__"
+@endvalidation
+<p>{query.reference}</p>
+TPL, ['reference' => '__SHARED_RENDERER__']);
+        $this->assertSame('<p>__SHARED_RENDERER__</p>', $output);
+        $this->assertSame(200, $status);
+    }
+
     #[DataProvider('validRules')]
     public function test_scalar_rules_accept_expected_values(string $declaration, mixed $value): void
     {

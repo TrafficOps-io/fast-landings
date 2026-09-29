@@ -114,7 +114,37 @@ class FileWorkspaceServiceTest extends TestCase
         $this->assertFalse(collect($snapshot['files'])->keyBy('path')['large.html']['editable']);
     }
 
-    public function test_direct_edits_turn_generated_landing_into_static_release_and_rollback_restores_snapshot(): void
+    public function test_publishing_a_template_landing_draft_requires_explicit_detach_from_template(): void
+    {
+        $template = $this->template();
+        $landing = app(TemplateLandingService::class)->create($template, ['name' => 'Generated', 'slug' => 'generated'], ['title' => 'Original'], [], $this->user);
+        $release = $landing->activeRelease;
+        $id = $this->files->open($release, $this->user);
+        $this->files->write($id, 'index.html', '<h1>Hand edited</h1>', $this->user);
+
+        $this->validation(fn () => $this->files->publish($id, $this->user), 'Detach from template');
+
+        $this->assertSame($release->id, $landing->fresh()->activeRelease->id);
+        $this->assertSame($template->id, $landing->fresh()->landing_template_id);
+        $this->assertDatabaseCount('landing_releases', 1);
+        $this->assertSame('<h1>Hand edited</h1>', $this->files->read($id, 'index.html', $this->user), 'The draft survives the refused publish.');
+
+        $published = $this->files->publishDetachingFromTemplate($id, $this->user);
+        $this->assertNull($published->landing_template_id);
+        $this->assertNull($landing->fresh()->landing_template_id);
+    }
+
+    public function test_file_landing_draft_publishes_without_a_detach_confirmation(): void
+    {
+        $id = $this->files->open($this->release(), $this->user);
+        $this->assertFalse($this->files->info($id, $this->user)['template_linked']);
+
+        $published = $this->files->publish($id, $this->user);
+
+        $this->assertTrue($published->is_active);
+    }
+
+    public function test_detach_from_template_turns_template_landing_into_file_landing_and_activating_restores_snapshot(): void
     {
         $template = $this->template();
         $landing = app(TemplateLandingService::class)->create($template, ['name' => 'Generated', 'slug' => 'generated'], ['title' => 'Original'], [], $this->user);
@@ -122,7 +152,7 @@ class FileWorkspaceServiceTest extends TestCase
         $id = $this->files->open($previous, $this->user);
         $this->assertTrue($this->files->info($id, $this->user)['template_linked']);
         $this->files->write($id, 'index.html', '<h1>Hand edited</h1>', $this->user);
-        $published = $this->files->publish($id, $this->user);
+        $published = $this->files->publishDetachingFromTemplate($id, $this->user);
 
         $this->assertNull($published->landing_template_id);
         $this->assertNull($published->template_values);
@@ -239,16 +269,17 @@ class FileWorkspaceServiceTest extends TestCase
         $this->assertSame('Original', $this->files->read($second, 'index.html', $this->user));
     }
 
-    public function test_editing_an_old_release_tracks_the_active_release_at_open(): void
+    public function test_draft_is_opened_from_the_active_release_only(): void
     {
         $old = $this->release();
-        $replacement = app(LandingArchiveService::class)->deploy($old->landing, $this->zip(['index.html' => 'Current']), $this->user);
-        $id = $this->files->open($old, $this->user);
-        $this->assertSame($replacement->id, $this->files->info($id, $this->user)['revision']);
-        $this->assertSame('Original', $this->files->read($id, 'index.html', $this->user));
-        $result = $this->files->publish($id, $this->user);
-        $this->assertTrue($result->is_active);
-        $this->assertFalse($replacement->fresh()->is_active);
+        $active = app(LandingArchiveService::class)->deploy($old->landing, $this->zip(['index.html' => 'Current']), $this->user);
+
+        $this->validation(fn () => $this->files->open($old, $this->user), 'Activate this release first');
+        $this->assertSame([], Storage::disk('landings')->allFiles('_file_editor'), 'No draft is left behind for a refused release.');
+
+        $id = $this->files->open($active, $this->user);
+        $this->assertSame($active->id, $this->files->info($id, $this->user)['revision']);
+        $this->assertSame('Current', $this->files->read($id, 'index.html', $this->user));
     }
 
     public function test_missing_landing_entrypoint_cannot_be_published(): void

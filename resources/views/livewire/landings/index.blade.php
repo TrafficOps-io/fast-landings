@@ -96,7 +96,7 @@
                                 @else
                                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 8h18M7 6h.01M10 6h.01M7 16l3-3 3 3 2-2 3 3"/></svg>
                                 @endif
-                                <span class="text-sm">{{ !$release ? 'Deploy a release to see its preview' : ($pending ? 'Creating screenshot…' : ($release->entrypoint === 'index.php' ? 'Open the website to view this PHP page' : ($release->preview_status === 'failed' ? 'Screenshot unavailable' : 'Preview not generated yet'))) }}</span>
+                                <span class="text-sm">{{ !$release ? 'Deploy a release to see its preview' : ($pending ? 'Creating screenshot…' : ($release->entrypoint === 'index.php' ? 'Open the landing to view this PHP page' : ($release->preview_status === 'failed' ? 'Screenshot unavailable' : 'Preview not generated yet'))) }}</span>
                             </div>
                         @endif
                         <div class="absolute left-3 top-3 rounded-full bg-base-100/95 shadow-sm">

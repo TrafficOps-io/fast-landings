@@ -31,7 +31,7 @@ class TemplateLandingService
         private TemplateImageUploadPolicy $imageUploads,
     ) {}
 
-    public function create(LandingTemplate $template, array $attributes, array $values, array $uploads, User $user): Landing
+    public function create(LandingTemplate $template, array $attributes, array $values, array $uploads, User $user, ?array &$warnings = null): Landing
     {
         abort_unless($user->is_active, 403);
         $attributes['name'] = trim($attributes['name'] ?? '');
@@ -49,17 +49,17 @@ class TemplateLandingService
         ]);
         $landing->id = (string) Str::ulid();
 
-        return $this->publish($landing, $template, $values, $uploads, $user);
+        return $this->publish($landing, $template, $values, $uploads, $user, warnings: $warnings);
     }
 
-    public function update(Landing $landing, LandingTemplate $template, array $values, array $uploads, User $user, ?string $expectedReleaseId): Landing
+    public function update(Landing $landing, LandingTemplate $template, array $values, array $uploads, User $user, ?string $expectedReleaseId, ?array &$warnings = null): Landing
     {
         abort_unless($user->is_active && $landing->exists, 403);
 
-        return $this->publish($landing, $template, $values, $uploads, $user, $expectedReleaseId);
+        return $this->publish($landing, $template, $values, $uploads, $user, $expectedReleaseId, $warnings);
     }
 
-    private function publish(Landing $landing, LandingTemplate $template, array $values, array $uploads, User $user, ?string $expectedReleaseId = null): Landing
+    private function publish(Landing $landing, LandingTemplate $template, array $values, array $uploads, User $user, ?string $expectedReleaseId = null, ?array &$warnings = null): Landing
     {
         $disk = Storage::disk(config('fast-landings.storage_disk'));
         $release = null;
@@ -72,7 +72,7 @@ class TemplateLandingService
 
         try {
             // Keep deletion from removing source assets during compilation.
-            return DB::transaction(function () use ($template, $values, $uploads, $user, $landing, $disk, $archivePath, $expectedReleaseId, &$release, &$mediaFiles): Landing {
+            return DB::transaction(function () use ($template, $values, $uploads, $user, $landing, $disk, $archivePath, $expectedReleaseId, &$release, &$mediaFiles, &$warnings): Landing {
                 $template = LandingTemplate::query()->lockForUpdate()->findOrFail($template->id);
                 $previous = null;
                 if ($landing->exists) {
@@ -98,7 +98,7 @@ class TemplateLandingService
                     Arr::set($values, $path, $filename);
                 }
 
-                $values = $this->engine->validateValues($definition, $values);
+                $values = $this->engine->validateValues($definition, $values, $warnings);
                 $pages = $this->engine->renderPages($definition, $values);
                 if ($previous?->landing_template_id === $template->id) {
                     $images += $this->retainedImages($definition, $values, $previous);

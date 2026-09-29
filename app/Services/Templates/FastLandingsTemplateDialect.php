@@ -158,7 +158,7 @@ final class FastLandingsTemplateDialect implements TemplateDialect
     public function validationSample(string $fieldType, string $value): string
     {
         return preg_replace(
-            '/(?<!\{)\{(?:query|headers|body)\.(?:[A-Za-z0-9_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*)*|\*)\}(?!\})/',
+            $this->requestRuntime->macroPattern(escaped: false),
             'runtime-value',
             $value,
         );

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\DomainStatus;
 use App\Models\Domain;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -17,11 +16,8 @@ class CaddyAskController extends Controller
 
         $domain = strtolower(rtrim((string) $request->query('domain'), '.'));
         $routable = $domain !== '' && Domain::query()
+            ->servable()
             ->where('hostname', $domain)
-            ->where('status', DomainStatus::Active)
-            ->whereHas('landing', fn ($query) => $query
-                ->where('is_active', true)
-                ->whereHas('releases', fn ($releases) => $releases->where('is_active', true)))
             ->exists();
         abort_unless($routable, 404);
 
