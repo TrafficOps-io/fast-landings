@@ -70,7 +70,11 @@ class TemplateRequestRuntime
             ? substr($match[0], 1)
             : '<?php echo '.$variable.'('.var_export('{'.$match[2].'}', true).'); ?>', $markup);
         $markup = strtr($markup, $opaque);
-        $runtime = str_replace(['__REQUEST_RENDERER__', '__VALIDATION_BLOCKS__', '__SHARED_RENDERER__'], [$variable, var_export($blocks, true), StandaloneRenderer::source()], $this->runtime());
+        $runtime = strtr($this->runtime(), [
+            '__REQUEST_RENDERER__' => $variable,
+            '__VALIDATION_BLOCKS__' => var_export($blocks, true),
+            '__SHARED_RENDERER__' => StandaloneRenderer::source(),
+        ]);
 
         // PHP requires leading declare/namespace statements before executable code.
         $prefix = $this->phpDeclarationPrefix($markup);
