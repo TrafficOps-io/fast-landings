@@ -64,9 +64,9 @@ class EditTemplate extends Component
         $this->validate(['templateId' => ['required', 'string', Rule::exists('landing_templates', 'id')]]);
         abort_unless($this->template?->id === $this->templateId, 422);
 
-        $landing = $landings->update($this->landing(), $this->template, $this->values, $this->uploads, $user, $this->baseReleaseId);
+        $landing = $landings->update($this->landing(), $this->template, $this->values, $this->uploads, $user, $this->baseReleaseId, $warnings);
 
-        session()->flash('saved', 'Landing updated from template. New release activated.');
+        session()->flash('saved', $this->savedTemplateMessage('Landing updated from template. New release activated.', $warnings));
         $this->redirectRoute('landings.show', $landing, navigate: true);
     }
 

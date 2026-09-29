@@ -198,6 +198,7 @@ class TemplateEngineTest extends TestCase
             $this->field('color', 'color', ['default' => '#aabbcc']),
             $this->field('size', 'range', ['min' => 10, 'max' => 30, 'step' => 0.5, 'default' => 14]),
             $this->field('layout', 'select', ['options' => ['wide' => 'Wide', 'narrow' => 'Narrow']]),
+            $this->field('declaredLayout', 'select', ['options' => ['wide' => 'Wide', 'narrow' => 'Narrow'], 'default' => 'narrow']),
             $this->field('enabled', 'checkbox'),
             $this->field('comments', 'repeater', [
                 'min_items' => 1,
@@ -207,12 +208,14 @@ class TemplateEngineTest extends TestCase
         ]));
 
         $this->assertSame([
-            'color' => '#aabbcc', 'size' => 14, 'layout' => 'wide', 'enabled' => false,
+            'color' => '#aabbcc', 'size' => 14, 'layout' => '', 'declaredLayout' => 'narrow', 'enabled' => false,
             'comments' => [['body' => 'Comment']],
         ], $this->engine()->defaults($definition));
         $values = $this->engine()->validateValues($definition, ['size' => '20.5', 'enabled' => '1']);
         $this->assertSame(20.5, $values['size']);
         $this->assertTrue($values['enabled']);
+        $this->assertSame('', $values['layout']);
+        $this->assertSame('narrow', $values['declaredLayout']);
         $this->assertSame('textarea', $this->engine()->fieldAtPath($definition, 'comments.0.body')['type']);
         $this->assertNull($this->engine()->fieldAtPath($definition, 'comments.0.missing'));
         $this->assertNull($this->engine()->fieldAtPath($definition, '../../body'));
@@ -320,13 +323,17 @@ class TemplateEngineTest extends TestCase
         ])));
     }
 
-    public function test_unknown_settings_and_nested_invalid_values_have_precise_errors(): void
+    public function test_unknown_values_are_dropped_with_warnings_and_nested_type_errors_remain_precise(): void
     {
         $definition = $this->definition([
             $this->field('comments', 'repeater', ['fields' => [$this->field('email', 'email')], 'max_items' => 1]),
         ]);
-        $this->assertValidationKey('values.unknown', fn () => $this->engine()->validateValues($definition, ['unknown' => 'data']));
-        $this->assertValidationKey('values.comments.0.email', fn () => $this->engine()->validateValues($definition, ['comments' => [['email' => 'bad']]]));
+        $values = $this->engine()->validateValues($definition, [
+            'unknown' => 'data', 'comments' => [['email' => 'reader@example.com', 'retired' => 'old data']],
+        ], $warnings);
+        $this->assertSame(['comments' => [['email' => 'reader@example.com']]], $values);
+        $this->assertSame(['unknown', 'comments.0.retired'], array_keys($warnings));
+        $this->assertValidationKey('values.comments.0.email', fn () => $this->engine()->validateValues($definition, ['unknown' => 'data', 'comments' => [['email' => 'bad']]]));
         $this->assertValidationKey('values.comments', fn () => $this->engine()->validateValues($definition, ['comments' => [[], []]]));
     }
 
