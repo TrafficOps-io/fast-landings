@@ -21,16 +21,17 @@
         "ext-intl": "*",
         "ext-pdo_pgsql": "*",
         "ext-zip": "*",
-        "trafficops/fast-landings-ui": "dev-main",
-        "trafficops/template-dsl": "dev-main",
-        "trafficops/tops-infra": "^0.1.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "league/commonmark": "^2.8",
         "league/flysystem-aws-s3-v3": "^3.0",
         "livewire/livewire": "^4.4",
         "spatie/laravel-tags": "^4.0",
-        "symfony/html-sanitizer": "^7.4"
+        "symfony/html-sanitizer": "^7.4",
+        "trafficops/fast-landings-ui": "dev-main",
+        "trafficops/template-dsl": "dev-main",
+        "trafficops/tops-infra": "dev-main",
+        "trafficops/tops-runtime": "dev-main"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

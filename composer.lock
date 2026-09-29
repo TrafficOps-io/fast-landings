@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0cf1212c9bb8e1c55d69feb0b872050c",
+    "content-hash": "4a6b7c3b99fd47ad1b41ce72eda5704f",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -6773,12 +6773,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/TrafficOps-io/tops-templates.git",
-                "reference": "abdb7f5ac42a70f36e920d79260d29c5c20c2b30"
+                "reference": "fd884306baeb0e293feb05d1835788fa348d12a4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/TrafficOps-io/tops-templates/zipball/abdb7f5ac42a70f36e920d79260d29c5c20c2b30",
-                "reference": "abdb7f5ac42a70f36e920d79260d29c5c20c2b30",
+                "url": "https://api.github.com/repos/TrafficOps-io/tops-templates/zipball/fd884306baeb0e293feb05d1835788fa348d12a4",
+                "reference": "fd884306baeb0e293feb05d1835788fa348d12a4",
                 "shasum": ""
             },
             "require": {
@@ -6831,20 +6831,20 @@
                 "issues": "https://github.com/trafficops-io/tops-templates/issues",
                 "source": "https://github.com/trafficops-io/tops-templates"
             },
-            "time": "2026-09-17T13:03:29+00:00"
+            "time": "2026-09-29T07:05:52+00:00"
         },
         {
             "name": "trafficops/tops-infra",
-            "version": "v0.1.0",
+            "version": "dev-main",
             "source": {
                 "type": "git",
                 "url": "https://github.com/TrafficOps-io/tops-infra.git",
-                "reference": "d44b588025ae064bec17bf4f16210c9116c97c11"
+                "reference": "6b5fc738e8be86011f78cab4287140c1018fe718"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/TrafficOps-io/tops-infra/zipball/d44b588025ae064bec17bf4f16210c9116c97c11",
-                "reference": "d44b588025ae064bec17bf4f16210c9116c97c11",
+                "url": "https://api.github.com/repos/TrafficOps-io/tops-infra/zipball/6b5fc738e8be86011f78cab4287140c1018fe718",
+                "reference": "6b5fc738e8be86011f78cab4287140c1018fe718",
                 "shasum": ""
             },
             "require": {
@@ -6863,6 +6863,7 @@
                 "orchestra/testbench": "^10.0",
                 "phpunit/phpunit": "^11.5.3"
             },
+            "default-branch": true,
             "type": "library",
             "extra": {
                 "laravel": {
@@ -6897,7 +6898,55 @@
                 "issues": "https://github.com/trafficops-io/tops-infra/issues",
                 "source": "https://github.com/trafficops-io/tops-infra"
             },
-            "time": "2026-09-17T11:51:48+00:00"
+            "time": "2026-09-29T07:04:48+00:00"
+        },
+        {
+            "name": "trafficops/tops-runtime",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/TrafficOps-io/tops-runtime.git",
+                "reference": "95dcb4b337e6bd5a5b1f55969e66d33f5e94d4e0"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/TrafficOps-io/tops-runtime/zipball/95dcb4b337e6bd5a5b1f55969e66d33f5e94d4e0",
+                "reference": "95dcb4b337e6bd5a5b1f55969e66d33f5e94d4e0",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/database": "^12.0",
+                "php": "^8.4"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.24",
+                "phpunit/phpunit": "^11.5.3"
+            },
+            "default-branch": true,
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "TrafficOps\\Macros\\": "packages/macros/src/",
+                    "TrafficOps\\Runtime\\": "packages/runtime/src/",
+                    "TrafficOps\\Conditions\\": "packages/conditions/src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Typed macros, payload lookups, condition evaluation and PostgreSQL compilation.",
+            "homepage": "https://github.com/trafficops-io/tops-runtime",
+            "keywords": [
+                "laravel",
+                "php",
+                "trafficops"
+            ],
+            "support": {
+                "issues": "https://github.com/trafficops-io/tops-runtime/issues",
+                "source": "https://github.com/trafficops-io/tops-runtime"
+            },
+            "time": "2026-09-29T07:00:14+00:00"
         },
         {
             "name": "vlucas/phpdotenv",
@@ -9427,7 +9476,9 @@
     "minimum-stability": "dev",
     "stability-flags": {
         "trafficops/fast-landings-ui": 20,
-        "trafficops/template-dsl": 20
+        "trafficops/template-dsl": 20,
+        "trafficops/tops-infra": 20,
+        "trafficops/tops-runtime": 20
     },
     "prefer-stable": true,
     "prefer-lowest": false,

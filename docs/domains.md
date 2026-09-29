@@ -31,7 +31,7 @@ The server target determines the record type: IPv4 uses A, IPv6 uses AAAA, and a
 
 This creates explicit assignments for `offer.customer.example` and `signup.customer.example`. No extra DNS record is created for these children. The root address can serve a third landing or remain unassigned. Unknown names such as `anything.customer.example` do not serve a landing automatically, even when wildcard DNS resolves them to the server.
 
-Each child gets its own DNS check because an existing record for that exact hostname can override the wildcard. A failed base check also blocks its dependent children; restoring the base schedules checks for those children rather than assuming they are valid. Enter one label per child. The base cannot be removed until its child addresses are removed.
+Each child gets its own DNS check because an existing record for that exact hostname can override the wildcard. Confirmed DNS drift on the base blocks its dependent children until a successful check; transient timeouts and worker errors preserve previously verified delivery. Restoring the base schedules checks for those children rather than assuming they are valid. Enter one label per child. The base cannot be removed until its child addresses are removed.
 
 ## Assign, move, or release an address
 
@@ -39,7 +39,7 @@ On a landing, **Available domains** lists unassigned registry addresses. Assigni
 
 **Unassign** keeps the address and its DNS available for reuse while stopping delivery of the previous landing. Each hostname serves at most one landing; a landing can have multiple hostnames. **Make primary** chooses the link used by **Open landing**. Other assigned addresses continue to serve the same content, with no redirect created.
 
-An assignment serves content only when the landing is published, has an active release, and the custom address has verified DNS. Production host projections update shortly after an assignment or publication change.
+An assignment serves content only when the landing is published, has an active release, and the custom address has verified DNS with no unresolved drift. A later timeout or worker error keeps serving; confirmed drift remains blocked until a successful check. Production host projections update shortly after an assignment or publication change.
 
 ## Manage Cloudflare accounts and tokens
 

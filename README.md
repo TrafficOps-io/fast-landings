@@ -244,13 +244,9 @@ The production topology and operational commands are documented in [`deploy/READ
 
 ## Dependency boundary
 
-The application installs the shared infrastructure and template engine from Packagist: [`trafficops/tops-infra`](https://packagist.org/packages/trafficops/tops-infra) and [`trafficops/template-dsl`](https://packagist.org/packages/trafficops/template-dsl). The design system is copied into `packages/ui`, and the browser-only TPL analyzer is vendored under `resources/js/vendor`; neither requires the private source monorepo.
+The application installs shared infrastructure, templates and request macros from Packagist: [`trafficops/tops-infra`](https://packagist.org/packages/trafficops/tops-infra), [`trafficops/template-dsl`](https://packagist.org/packages/trafficops/template-dsl) and [`trafficops/tops-runtime`](https://packagist.org/packages/trafficops/tops-runtime). Composer lock pins their exact commits. Request rendering is exported into each dynamic release so the landing PHP runtime needs no vendor code. The design system is copied into `packages/ui`, and the browser-only TPL analyzer is vendored under `resources/js/vendor`; neither requires the private source monorepo.
 
-## License
-
-Fast Landings is released under the [MIT License](LICENSE).
-
-### Upgrading the domain checks
+## Upgrading the domain checks
 
 Run `php artisan migrate --force` before restarting the panel, queue workers and
 projection-sync service. The migrations backfill `verified_at` for domains that
@@ -268,3 +264,7 @@ before changing the schema: resolve that duplicate claim before retrying. Pause
 queue workers and projection-sync during this upgrade so old code does not run
 against the split claims. Rolling back this migration merges the record rows
 again and requires the previous tops-infra containment policy.
+
+## License
+
+Fast Landings is released under the [MIT License](LICENSE).
