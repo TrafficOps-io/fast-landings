@@ -8,7 +8,8 @@
         "build": "vite build",
         "dev": "vite",
         "test:js": "node --test tests/js/*.test.js",
-        "previews:install": "playwright install chromium"
+        "previews:install": "playwright install chromium",
+        "test:browser": "node tests/browser/editor-smoke.mjs"
     },
     "dependencies": {
         "@trafficops/fast-landings-ui": "file:packages/ui",

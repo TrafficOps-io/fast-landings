@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compile } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchCompile.js';
-import { MonarchTokenizer } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchLexer.js';
+import { compile } from 'monaco-editor/editor/standalone/common/monarch/monarchCompile.js';
+import { MonarchTokenizer } from 'monaco-editor/editor/standalone/common/monarch/monarchLexer.js';
 import language from '../../resources/js/vendor/trafficops-template-language.cjs';
 import { tplGrammar } from '../../resources/js/file-editor-grammar.js';
 
