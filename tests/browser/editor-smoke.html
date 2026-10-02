@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Editor smoke</title></head><body><div id="editor" style="height:600px"></div><script type="module">
+import { createFileEditor } from '../../resources/js/file-editor-monaco.js';
+import * as monaco from 'monaco-editor/editor/editor.api.js';
+const instance = createFileEditor(document.querySelector('#editor'), { content: '@template "Browser test"\n@param title String = "Hello"\n@layout\n<h1>{{title}}</h1>\n@endlayout', path: 'index.tpl.html', workspaceId: 'smoke', files: ['index.tpl.html'] }, () => { window.saved = true; });
+window.instance = instance; window.monaco = monaco;
+</script></body></html>

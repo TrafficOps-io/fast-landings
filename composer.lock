@@ -1624,16 +1624,16 @@
         },
         {
             "name": "league/commonmark",
-            "version": "2.10.1",
+            "version": "2.10.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/thephpleague/commonmark.git",
-                "reference": "9d489ab67a02960fd8ffe624d93f751daf95439e"
+                "reference": "6efbd9c472b91db0a3350fcd601c8332c2382e1f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/thephpleague/commonmark/zipball/9d489ab67a02960fd8ffe624d93f751daf95439e",
-                "reference": "9d489ab67a02960fd8ffe624d93f751daf95439e",
+                "url": "https://api.github.com/repos/thephpleague/commonmark/zipball/6efbd9c472b91db0a3350fcd601c8332c2382e1f",
+                "reference": "6efbd9c472b91db0a3350fcd601c8332c2382e1f",
                 "shasum": ""
             },
             "require": {
@@ -1727,7 +1727,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-09-07T13:44:26+00:00"
+            "time": "2026-09-21T13:07:34+00:00"
         },
         {
             "name": "league/config",
@@ -6773,12 +6773,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/TrafficOps-io/tops-templates.git",
-                "reference": "fd884306baeb0e293feb05d1835788fa348d12a4"
+                "reference": "da24e7a4a8083662999243e6119e564bc6f17fa4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/TrafficOps-io/tops-templates/zipball/fd884306baeb0e293feb05d1835788fa348d12a4",
-                "reference": "fd884306baeb0e293feb05d1835788fa348d12a4",
+                "url": "https://api.github.com/repos/TrafficOps-io/tops-templates/zipball/da24e7a4a8083662999243e6119e564bc6f17fa4",
+                "reference": "da24e7a4a8083662999243e6119e564bc6f17fa4",
                 "shasum": ""
             },
             "require": {
@@ -6786,7 +6786,7 @@
                 "ext-mbstring": "*",
                 "illuminate/support": "^12.0",
                 "illuminate/validation": "^12.0",
-                "league/commonmark": "^2.8",
+                "league/commonmark": "^2.10.2",
                 "php": "^8.4",
                 "symfony/html-sanitizer": "^7.4 || ^8.0"
             },
@@ -6831,7 +6831,7 @@
                 "issues": "https://github.com/trafficops-io/tops-templates/issues",
                 "source": "https://github.com/trafficops-io/tops-templates"
             },
-            "time": "2026-09-29T07:05:52+00:00"
+            "time": "2026-10-02T19:14:35+00:00"
         },
         {
             "name": "trafficops/tops-infra",
